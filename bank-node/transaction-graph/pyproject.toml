@@ -1,0 +1,30 @@
+[project]
+name = "transaction-graph"
+version = "0.1.0"
+description = "Neo4j based transaction graph service for bank nodes"
+authors = [
+    { name = "Antigravity", email = "antigravity@example.com" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "grpcio>=1.56.0",
+    "grpcio-tools>=1.56.0",
+    "neo4j>=5.10.0",
+    "confluent-kafka>=2.2.0",
+    "pydantic>=2.1.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0"
+]
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "*.py"
