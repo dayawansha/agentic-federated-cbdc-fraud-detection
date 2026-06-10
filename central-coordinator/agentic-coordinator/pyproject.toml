@@ -1,0 +1,22 @@
+[project]
+name = "agentic-coordinator"
+version = "0.1.0"
+description = "Agentic Meta-Coordinator for Federated CBDC Fraud Detection"
+authors = [
+    { name = "WAD Dusman Nalin Dayawansha" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "langchain>=0.0.200",
+    "langgraph>=0.0.10",
+    "grpcio>=1.56.0",
+    "confluent-kafka>=2.1.0",
+    "redis>=4.5.0",
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

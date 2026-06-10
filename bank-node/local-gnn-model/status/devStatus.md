@@ -1,7 +1,7 @@
 # Service Development Status: Local GNN
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 40%
 
 ---
 
@@ -18,13 +18,16 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| GNN model architecture | Critical | 🔴 Not Started | 0% |
-| Data loader implementation | High | 🔴 Not Started | 0% |
-| Inference backend (gRPC) | High | 🔴 Not Started | 0% |
+| Model Architecture (PyG) | Critical | 🟢 Completed | 100% |
+| Local Training Loop | Critical | 🟡 In Progress | 60% |
+| Inference Engine | High | 🔴 Not Started | 0% |
+| gRPC Interface | High | 🟡 In Progress | 20% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🔴 Not Started | 0% |
 
 ---
 
 ## Notes & Blockers
-- Initial structure complete.
+- FraudGNN architecture implemented supporting GCN, GAT, and GraphSAGE.
+- LocalTrainer implemented with support for weighted federated updates.
+- Need to implement data loaders for the processed Elliptic++ shards.complete.

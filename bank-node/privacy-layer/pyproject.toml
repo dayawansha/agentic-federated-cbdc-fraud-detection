@@ -1,0 +1,20 @@
+[project]
+name = "privacy-layer"
+version = "0.1.0"
+description = "Privacy-Preserving Layer (Differential Privacy + Encryption) for Bank Node"
+authors = [
+    { name = "WAD Dusman Nalin Dayawansha" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "torch>=2.0.0",
+    "opacus>=1.4.0",
+    "cryptography>=41.0.0",
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

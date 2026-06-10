@@ -1,7 +1,7 @@
 # Service Development Status: Policy Manager
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 20%
 
 ---
 
@@ -18,13 +18,15 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| Policy API implementation | High | 🔴 Not Started | 0% |
-| Database Integration | High | 🔴 Not Started | 0% |
-| Privacy Budget Tracking | Critical | 🔴 Not Started | 0% |
+| API Definitions | High | 🟢 Completed | 100% |
+| Privacy Budget Logic | Critical | 🟡 In Progress | 50% |
+| Governance Rules | High | 🔴 Not Started | 0% |
+| PostgreSQL Integration | High | 🔴 Not Started | 0% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
-| Dockerization | Medium | 🔴 Not Started | 0% |
+| Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Base structure created.
+- Initial REST API for privacy budget management implemented.
+- Currently using in-memory storage; needs PostgreSQL migration.

@@ -1,7 +1,7 @@
 # Service Development Status: Model Registry
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 20%
 
 ---
 
@@ -18,13 +18,15 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| MLflow Integration | Critical | 🔴 Not Started | 0% |
-| Storage Provider Config (S3) | High | 🔴 Not Started | 0% |
-| Model Search API | Medium | 🔴 Not Started | 0% |
-| Unit Tests | Medium | 🔴 Not Started | 0% |
-| Dockerization | Medium | 🔴 Not Started | 0% |
+| API Definitions | High | 🟢 Completed | 100% |
+| Versioning Logic | High | 🟡 In Progress | 40% |
+| MLflow Integration | Medium | 🔴 Not Started | 0% |
+| PostgreSQL Integration | High | 🔴 Not Started | 0% |
+| Artifact Storage (MinIO) | Medium | 🔴 Not Started | 0% |
+| Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Core structure initialized.
+- Basic versioning API implemented.
+- Integration with MLflow and persistent storage pending.

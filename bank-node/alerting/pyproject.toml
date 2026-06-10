@@ -1,0 +1,19 @@
+[project]
+name = "alerting"
+version = "0.1.0"
+description = "Alerting and Notification Service for Federated CBDC Fraud Detection"
+authors = [
+    { name = "WAD Dusman Nalin Dayawansha" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "confluent-kafka>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

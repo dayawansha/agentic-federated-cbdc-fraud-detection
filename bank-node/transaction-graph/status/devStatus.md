@@ -1,7 +1,7 @@
 # Service Development Status: Transaction Graph
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 40%
 
 ---
 
@@ -9,7 +9,7 @@
 - **Service Name:** transaction-graph
 - **Domain:** bank-node
 - **Port:** 9004
-- **Protocol:** REST / CDC
+- **Protocol:** REST / gRPC / CDC
 
 ---
 
@@ -18,13 +18,15 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| Neo4j Data Integration | Critical | 🔴 Not Started | 0% |
+| Neo4j Data Integration | Critical | 🟢 Completed | 100% |
+| gRPC Server Implementation | High | 🟢 Completed | 100% |
 | Feature Engineering Pipeline | Critical | 🔴 Not Started | 0% |
-| CDC streaming (Debezium) | High | 🔴 Not Started | 0% |
+| CDC streaming (Kafka Producer) | High | 🟡 In Progress | 70% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🔴 Not Started | 0% |
 
 ---
 
 ## Notes & Blockers
-- Initial layout set up.
+- Core Neo4j integration and gRPC server for graph queries implemented.
+- Basic Kafka producer for CDC events added.

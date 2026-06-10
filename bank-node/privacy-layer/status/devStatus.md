@@ -1,7 +1,7 @@
 # Service Development Status: Privacy Layer
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 30%
 
 ---
 
@@ -9,7 +9,7 @@
 - **Service Name:** privacy-layer
 - **Domain:** bank-node
 - **Port:** 9003
-- **Protocol:** gRPC
+- **Protocol:** gRPC / REST
 
 ---
 
@@ -18,13 +18,16 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| DP Noise Addition Logic | Critical | 🔴 Not Started | 0% |
-| Encryption Module | High | 🔴 Not Started | 0% |
-| gRPC communication logic | Medium | 🔴 Not Started | 0% |
+| DP Noise Mechanisms | Critical | 🟢 Completed | 100% |
+| Encryption Module (AES) | High | 🟢 Completed | 100% |
+| API Layer (REST/gRPC) | High | 🟡 In Progress | 40% |
+| Opacus Integration | Medium | 🔴 Not Started | 0% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🔴 Not Started | 0% |
 
 ---
 
 ## Notes & Blockers
-- Placeholder created.
+- Core PrivacyEngine implemented with Gaussian DP noise and Fernet (AES) encryption.
+- Basic REST API for DP application initialized.
+- Future work: Integrate Opacus for per-sample gradient clipping.

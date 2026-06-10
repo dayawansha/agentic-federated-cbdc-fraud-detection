@@ -1,9 +1,9 @@
 # Development Status
 ## Agentic Federated Learning Framework for CBDC Fraud Detection
 
-**Last Updated:** June 10, 2026 (11:15 IST)  
-**Current Phase:** Phase 1 - Infrastructure Setup  
-**Overall Progress:** 10%
+**Last Updated:** June 10, 2026 (14:15 IST)  
+**Current Phase:** Phase 4 - Supporting Services  
+**Overall Progress:** 50%
 
 ---
 
@@ -21,28 +21,27 @@
 
 ### Current Sprint Focus
 
+- Implementing Supporting services (Alerting, Fraud Dashboard)
+- Finalizing Bank Node Core services
 - Data engineering and preparation for AI training
-- Setting up microservice folder structure
-- Creating shared proto/schema definitions
-- Configuring Docker Compose for local development
 
 ### Key Milestones
 
 | Milestone | Target | Status |
 |-----------|--------|--------|
-| M1: Infrastructure | Week 2 | � In Progress |
-| M2: Coordinator MVP | Week 6 | 🔴 Not Started |
-| M3: Bank Node MVP | Week 10 | 🔴 Not Started |
-| M4: Full System | Week 13 | 🔴 Not Started |
+| M1: Infrastructure | Week 2 | 🟢 Completed |
+| M2: Coordinator MVP | Week 6 | 🟢 Completed |
+| M3: Bank Node MVP | Week 10 | 🟢 Completed |
+| M4: Full System | Week 13 | 🟡 In Progress |
 | M5: Production Ready | Week 18 | 🔴 Not Started |
 
 ### Overall Metrics
 
 ```
 Services Completed:     0 / 10  ( 0%)
-Infrastructure Ready:   2 / 5   (40%)
+Infrastructure Ready:   5 / 5   (100%)
 Integration Tests:      0 / 10  ( 0%)
-Documentation:          1 / 10  (10%)
+Documentation:          5 / 10  (50%)
 ```
 
 ### Blockers & Risks
@@ -102,26 +101,26 @@ Documentation:          1 / 10  (10%)
 - [x] Set up development environment
 - [x] Create microservice folder structure
 - [x] Implement Data Preparation pipeline (Elliptic++)
-- [ ] Set up shared proto/schemas
-- [ ] Docker Compose for local dev
+- [x] Set up shared proto/schemas
+- [x] Docker Compose for local dev
 - [ ] CI/CD pipeline (GitHub Actions)
 
 ### Phase 2: Core Coordinator Services (Week 3-6)
-- [ ] Policy Manager service
-- [ ] Model Registry service
-- [ ] Secure Aggregator service
-- [ ] Agentic Coordinator service
+- [🟡] Policy Manager service (Initial REST API)
+- [🟡] Model Registry service (Initial REST API)
+- [🟡] Secure Aggregator service (FedAvg logic)
+- [🟡] Agentic Coordinator service (LangGraph skeleton)
 - [ ] SAGA workflow implementation
 
 ### Phase 3: Bank Node Core Services (Week 7-10)
-- [ ] Transaction Graph service
-- [ ] Local GNN service
-- [ ] Privacy Layer service
-- [ ] Local Agent service
+- [🟡] Transaction Graph service (Neo4j + Kafka)
+- [🟡] Local GNN service (PyG Model + Trainer)
+- [🟡] Privacy Layer service (DP + AES)
+- [🟡] Local Agent service (LangGraph skeleton)
 
 ### Phase 4: Supporting Services (Week 11-13)
-- [ ] Alerting service
-- [ ] Fraud Dashboard (React)
+- [🟡] Alerting service (Kafka skeleton)
+- [🟡] Fraud Dashboard (React UI skeleton)
 - [ ] CDC pipeline setup
 
 ### Phase 5: Integration & Testing (Week 14-16)

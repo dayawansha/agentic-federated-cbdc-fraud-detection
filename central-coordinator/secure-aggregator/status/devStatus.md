@@ -1,7 +1,7 @@
 # Service Development Status: Secure Aggregator
 
-**Current Status:** 🔴 Not Started
-**Progress:** 0%
+**Current Status:** 🟡 In Progress
+**Progress:** 20%
 
 ---
 
@@ -18,13 +18,16 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| Federated Aggregation Logic | Critical | 🔴 Not Started | 0% |
+| API Definitions (Proto) | High | 🟢 Completed | 100% |
+| Federated Aggregation Logic | Critical | 🟡 In Progress | 40% |
 | secure aggregation protocols | Critical | 🔴 Not Started | 0% |
-| gRPC Server Setup | High | 🔴 Not Started | 0% |
+| gRPC Server Setup | High | 🟡 In Progress | 20% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
-| Dockerization | Medium | 🔴 Not Started | 0% |
+| Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Waiting for shared proto definitions.
+- Core FedAvg logic implemented using PyTorch.
+- gRPC server skeleton ready.
+- Need to implement advanced secure aggregation (e.g., differential privacy noise addition).
