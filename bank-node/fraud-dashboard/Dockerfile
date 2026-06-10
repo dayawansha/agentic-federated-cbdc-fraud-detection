@@ -2,10 +2,10 @@ FROM node:18-slim
 
 WORKDIR /app
 
-COPY package.json ./
+COPY bank-node/fraud-dashboard/package.json ./
 RUN npm install
 
-COPY . .
+COPY bank-node/fraud-dashboard/ .
 
 EXPOSE 3000
 

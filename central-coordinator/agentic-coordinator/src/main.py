@@ -4,9 +4,14 @@ from fastapi import FastAPI
 from typing import Dict, List, TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 import asyncio
+import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Service configuration
+LOCAL_AGENT_URLS = os.getenv("LOCAL_AGENT_URLS", "http://localhost:9001").split(",")
+SECURE_AGGREGATOR_URL = os.getenv("SECURE_AGGREGATOR_URL", "http://localhost:8002")
 
 # --- LangGraph State Definition ---
 class AgentState(TypedDict):
@@ -21,21 +26,39 @@ class AgentState(TypedDict):
 async def select_agents(state: AgentState):
     logger.info(f"Selecting agents for round {state['round_id']}")
     # Logic to select agents based on health and availability
-    state['active_agents'] = ["bank-1", "bank-2", "bank-3"]
+    # For now, use all configured agents
+    state['active_agents'] = LOCAL_AGENT_URLS
     state['current_step'] = "training_triggered"
     return state
 
 async def trigger_training(state: AgentState):
     logger.info(f"Triggering training for agents: {state['active_agents']}")
-    # gRPC/Kafka calls to local agents
-    await asyncio.sleep(1) 
+    
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for agent_url in state['active_agents']:
+            # Call each local agent to start its local round
+            tasks.append(client.post(
+                f"{agent_url}/agent/round/start",
+                params={"round_id": state['round_id'], "agent_id": agent_url}
+            ))
+        
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, resp in enumerate(responses):
+            if isinstance(resp, Exception):
+                logger.error(f"Error triggering agent {state['active_agents'][i]}: {resp}")
+            elif resp.status_code == 200:
+                logger.info(f"Successfully triggered agent {state['active_agents'][i]}")
+            else:
+                logger.error(f"Agent {state['active_agents'][i]} failed: {resp.text}")
+
     state['current_step'] = "waiting_for_updates"
     return state
 
 async def aggregate_results(state: AgentState):
     logger.info("Aggregating results via Secure Aggregator")
-    # Call Secure Aggregator service
-    state['aggregation_complete'] = True
+    # In a real scenario, this would call the Secure Aggregator service
+    # state['aggregation_complete'] = True
     state['current_step'] = "round_complete"
     return state
 

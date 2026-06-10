@@ -1,0 +1,18 @@
+[project]
+name = "local-gnn"
+version = "0.1.0"
+description = "Local Graph Neural Network for Fraud Detection"
+authors = [
+    { name = "WAD Dusman Nalin Dayawansha" }
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "torch>=2.0.0",
+    "torch-geometric>=2.4.0",
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

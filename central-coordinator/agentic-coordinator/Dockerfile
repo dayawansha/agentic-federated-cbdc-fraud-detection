@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY pyproject.toml .
+COPY central-coordinator/agentic-coordinator/pyproject.toml .
 RUN pip install .
 
-COPY src/ ./src/
+COPY central-coordinator/agentic-coordinator/src/ ./src/
+COPY shared/ /app/shared/
 
 EXPOSE 8001
 
