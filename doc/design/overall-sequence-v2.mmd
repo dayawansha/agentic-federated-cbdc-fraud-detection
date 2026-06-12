@@ -1,0 +1,125 @@
+%%{init: {"theme":"base","themeVariables":{
+  "primaryColor":"#EAF3FF",
+  "primaryBorderColor":"#1F3B67",
+  "primaryTextColor":"#111827",
+  "lineColor":"#1F3B67",
+  "signalColor":"#1F3B67",
+  "signalTextColor":"#111827",
+  "actorBkg":"#F8FAFC",
+  "actorBorder":"#334155",
+  "actorTextColor":"#111827",
+  "noteBkgColor":"#FFF7ED",
+  "noteTextColor":"#111827",
+  "noteBorderColor":"#9A3412",
+  "tertiaryColor":"#F1F5F9",
+  "tertiaryBorderColor":"#475569",
+  "tertiaryTextColor":"#111827",
+  "textColor":"#111827",
+  "fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+}}}%%
+
+sequenceDiagram
+    autonumber
+
+    participant CBDC as CBDC Core / Payment Rail
+    participant TG as Transaction Graph (9004)
+    participant N4J as Neo4j
+    participant KF as Kafka
+    participant AL as Alerting (9005)
+    participant FD as Fraud Dashboard (3000)
+
+    participant LA as Local Agent (9001)
+    participant LG as Local GNN (9002)
+    participant PL as Privacy Layer (9003)
+
+    participant AC as Agentic Coordinator (8001)
+    participant SA as Secure Aggregator (8002)
+    participant PM as Policy Manager (8003)
+    participant MR as Model Registry (8004)
+
+    rect rgb(245,245,245)
+        Note over CBDC,MR: Overall Functional Flow (MVP): Data ingestion + Alerting + Federated Round Orchestration
+    end
+
+    rect rgb(232,244,255)
+        Note over CBDC,AL: A) Transaction Ingestion → Graph Storage → CDC Event Stream → Alert Fanout
+        CBDC->>TG: POST /transactions (transaction_id, source_account, target_account, amount, asset_type, metadata)
+        TG->>N4J: MERGE(Account) + CREATE(Transaction) + relationships
+        TG-->>CBDC: 200 OK (success, transaction_id)
+        TG->>KF: produce transactions.events (key=transaction_id, value=tx json)
+
+        opt Fraud Pattern Detection (Current: consumer-side)
+            AL->>KF: consume fraud.alerts
+            KF-->>AL: fraud alert event (alert payload)
+            AL-->>AL: store recent alerts in-memory
+            AL-->>FD: WS /ws/alerts (push alert payload)
+        end
+    end
+
+    rect rgb(255,244,232)
+        Note over FD,LA: B) Dashboard / Operator View (Polling + WebSocket)
+        loop Every 5s (UI polling)
+            FD->>LA: GET /agent/status
+            LA-->>FD: agent status (last_round_id, last_metrics, last_update_at)
+            FD->>AL: GET /alerts/recent?limit=25
+            AL-->>FD: recent alerts list
+        end
+        opt Live alerts
+            FD->>AL: WS connect /ws/alerts
+            AL-->>FD: stream alert payloads
+        end
+    end
+
+    rect rgb(236,255,236)
+        Note over AC,MR: C) Federated Learning Round (Coordinator-driven, end-to-end)
+        AC->>PM: GET /policies/global
+        PM-->>AC: policy (min_agents_per_round, strategy, limits)
+
+        AC->>MR: GET /models/latest
+        alt No global model exists yet
+            MR-->>AC: 404 No models found
+            AC-->>AC: initialize model weights (bootstrap)
+        else Global model exists
+            MR-->>AC: latest model metadata (artifact_path, metrics, version_id)
+            AC-->>AC: load artifact (optional in MVP)
+        end
+
+        loop Round start for each selected bank node
+            AC->>LA: POST /agent/round/start?round_id=...&agent_id=...
+            LA-->>AC: 200 OK (workflow accepted)
+        end
+
+        par Bank node internal pipeline (per Local Agent)
+            LA->>LG: POST /train (round_id, optional global_weights, epochs)
+            LG-->>LA: 200 OK (weights bytes + metrics + sample_size)
+            LA->>PL: POST /privacy/apply-dp (weights bytes, noise_multiplier)
+            PL-->>LA: 200 OK (dp_weights bytes)
+            LA->>PL: POST /privacy/encrypt (dp_weights bytes)
+            PL-->>LA: 200 OK (encrypted bytes)
+            LA-->>LA: prepare update payload (weights, sample_size, metrics, timestamp)
+        end
+
+        loop Update submission (per Local Agent)
+            LA->>AC: POST /updates/submit (round_id, agent_id, weights, sample_size, metrics)
+            AC-->>LA: accepted=true
+        end
+
+        Note over AC,SA: Coordinator waits until expected updates received or timeout
+        AC->>SA: POST /aggregate (round_id, updates[], strategy=FedAvg, noise_multiplier)
+        SA-->>AC: aggregated_weights bytes + weighted global_metrics
+
+        AC->>MR: POST /models/register (weights bytes, metrics, is_global=true)
+        MR-->>AC: model version_id
+
+        loop Budget accounting (per agent)
+            AC->>PM: POST /policies/budget/update (agent_id, epsilon_spent, delta_spent)
+            PM-->>AC: success + updated budget
+        end
+    end
+
+    rect rgb(245,245,245)
+        Note over CBDC,MR: D) Follow-up / Next Iteration (Planned Enhancements)
+        Note over TG,LG: Transaction Graph can evolve to compute richer graph features (beyond basic stats) for Local GNN consumption.
+        Note over SA,PL: Secure aggregation can evolve from DP-noise to MPC-style masking protocols for stronger privacy guarantees.
+        Note over MR: Artifact storage can evolve from local disk to S3/MinIO + MLflow integration for lifecycle management.
+    end

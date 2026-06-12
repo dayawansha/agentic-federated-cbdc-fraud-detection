@@ -15,10 +15,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Model Registry Service")
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://user:password@localhost:5432/federated_fraud_db",
-)
+def _build_database_url() -> str:
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    user = os.getenv("POSTGRES_USER", "user")
+    password = os.getenv("POSTGRES_PASSWORD", "password")
+    database = os.getenv("POSTGRES_DB", "federated_fraud_db")
+    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+
+DATABASE_URL = _build_database_url()
 ARTIFACT_DIR = os.getenv("ARTIFACT_DIR", os.path.abspath(os.path.join(os.getcwd(), "artifacts")))
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)

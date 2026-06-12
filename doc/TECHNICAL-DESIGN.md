@@ -89,7 +89,7 @@ This project adopts a **Design Science Research (DSR)** approach, focusing on de
 
 ### 2.2 Sequence Diagram
 
-![Overall Sequence](design/overall-sequence.png)
+![Overall Sequence](design/overall-sequence-0.1.png)
 
 ### 2.3 High-Level Architecture
 
