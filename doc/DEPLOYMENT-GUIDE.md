@@ -33,7 +33,14 @@ The easiest way to run the entire stack locally is using Docker Compose.
 - Docker installed (for building images)
 
 ### Step 1: Build Microservice Images
-Before deploying, you must build the images for each microservice. From the **PROJECT ROOT** (`agentic-federated-cbdc-fraud-detection`), run the following commands using `-f` to specify the Dockerfile path:
+Before deploying, you must build the images for each microservice. **You MUST run these commands from the PROJECT ROOT directory** (`agentic-federated-cbdc-fraud-detection`).
+
+The build context is set to `.` (the current directory) so that the `shared/` folder can be included in the images. We use the `-f` flag to point to the specific `Dockerfile` for each service.
+
+#### Build Optimizations
+All Dockerfiles now include:
+1. **Pip Cache Mount**: Uses `--mount=type=cache,target=/root/.cache/pip` to prevent re-downloading packages. This saves bandwidth and time.
+2. **Long Timeouts**: All services use `PIP_DEFAULT_TIMEOUT=19000` to prevent timeout errors with large packages (like PyTorch).
 
 #### Coordinator Domain
 ```bash

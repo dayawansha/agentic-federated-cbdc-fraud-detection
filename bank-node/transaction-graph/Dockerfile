@@ -1,4 +1,4 @@
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -7,23 +7,30 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy project metadata and source for installation
 COPY bank-node/transaction-graph/pyproject.toml .
-RUN pip install --no-cache-dir .
+COPY bank-node/transaction-graph/src/ ./src/
 
+# Install dependencies and the project (with pip cache to save bandwidth)
+ENV PIP_DEFAULT_TIMEOUT=19000
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install .
+
+# Final stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
+# Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
+# Copy source code and shared modules
 COPY bank-node/transaction-graph/src/ ./src/
 COPY shared/ /app/shared/
 
-EXPOSE 9004
-
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "9004"]
-
+# Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 

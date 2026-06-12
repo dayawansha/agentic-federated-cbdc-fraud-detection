@@ -2,7 +2,13 @@ import logging
 import os
 import json
 import sys
-from fastapi import FastAPI
+import asyncio
+from datetime import datetime, timezone
+from email.mime.text import MIMEText
+import smtplib
+from typing import Any, Dict, List, Set
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from confluent_kafka import Consumer, KafkaError
 import threading
 
@@ -15,11 +21,38 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Alerting Service")
 
+recent_alerts: List[Dict[str, Any]] = []
+recent_alerts_max = int(os.getenv("RECENT_ALERTS_MAX", "200"))
+connected_clients: Set[WebSocket] = set()
+alert_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+event_loop: asyncio.AbstractEventLoop | None = None
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
-def consume_fraud_events():
+def _send_email(subject: str, body: str):
+    host = os.getenv("SMTP_HOST")
+    to_addr = os.getenv("ALERT_EMAIL_TO")
+    if not host or not to_addr:
+        return
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER")
+    password = os.getenv("SMTP_PASSWORD")
+    from_addr = os.getenv("ALERT_EMAIL_FROM") or user or "alerts@local"
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to_addr
+
+    with smtplib.SMTP(host, port, timeout=10) as server:
+        server.starttls()
+        if user and password:
+            server.login(user, password)
+        server.sendmail(from_addr, [to_addr], msg.as_string())
+
+def consume_fraud_events(loop: asyncio.AbstractEventLoop):
     """
     Background thread to consume fraud events from Kafka and trigger alerts.
     """
@@ -50,18 +83,65 @@ def consume_fraud_events():
             # Process fraud alert
             try:
                 alert_data = json.loads(msg.value().decode('utf-8'))
-                logger.info(f"CRITICAL: Fraud detected! Alert ID: {alert_data.get('alert_id')}")
-                # Logic to send email, SMS, or create a ticket would go here
+                payload = dict(alert_data)
+                payload["received_at"] = datetime.now(timezone.utc).isoformat()
+                recent_alerts.append(payload)
+                if len(recent_alerts) > recent_alerts_max:
+                    del recent_alerts[: len(recent_alerts) - recent_alerts_max]
+
+                subject = f"Fraud Alert: {payload.get('alert_id', 'unknown')}"
+                body = json.dumps(payload, indent=2)
+                try:
+                    _send_email(subject, body)
+                except Exception as e:
+                    logger.error(f"Email send failed: {e}")
+
+                asyncio.run_coroutine_threadsafe(alert_queue.put(payload), loop)
+                logger.info(f"CRITICAL: Fraud detected! Alert ID: {payload.get('alert_id')}")
             except Exception as e:
                 logger.error(f"Error processing alert message: {e}")
                 
     finally:
         consumer.close()
 
+@app.get("/alerts/recent")
+async def get_recent_alerts(limit: int = 50):
+    limit = max(1, min(int(limit), recent_alerts_max))
+    return list(reversed(recent_alerts[-limit:]))
+
+@app.websocket("/ws/alerts")
+async def ws_alerts(websocket: WebSocket):
+    await websocket.accept()
+    connected_clients.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        connected_clients.discard(websocket)
+
+async def _broadcast_worker():
+    while True:
+        payload = await alert_queue.get()
+        if not connected_clients:
+            continue
+        message = json.dumps(payload)
+        to_remove: List[WebSocket] = []
+        for ws in list(connected_clients):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                to_remove.append(ws)
+        for ws in to_remove:
+            connected_clients.discard(ws)
+
 @app.on_event("startup")
 async def startup_event():
-    # Start Kafka consumer in a separate thread
-    thread = threading.Thread(target=consume_fraud_events, daemon=True)
+    global event_loop
+    event_loop = asyncio.get_running_loop()
+    asyncio.create_task(_broadcast_worker())
+    thread = threading.Thread(target=consume_fraud_events, args=(event_loop,), daemon=True)
     thread.start()
 
 if __name__ == "__main__":

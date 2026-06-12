@@ -1,7 +1,8 @@
 # Service Development Status: Fraud Dashboard
 
 **Current Status:** 🟡 In Progress
-**Progress:** 10%
+**Progress:** 60%
+**Last Updated:** 2026-06-12
 
 ---
 
@@ -19,9 +20,10 @@
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
 | UI Skeleton (React) | High | 🟢 Completed | 100% |
-| Real-time Alerts (WS) | Critical | 🔴 Not Started | 0% |
-| Analytics Visualization | High | 🔴 Not Started | 0% |
-| Integration with Local Agent| High | 🔴 Not Started | 0% |
+| Real-time Alerts (WS) | Critical | 🟢 Completed | 100% |
+| Analytics Visualization | High | 🟡 In Progress | 30% |
+| Integration with Local Agent | High | 🟢 Completed | 100% |
+| Integration with Alerting | High | 🟢 Completed | 100% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
@@ -29,4 +31,4 @@
 
 ## Notes & Blockers
 - Initial React project structure created.
-- Need to implement data fetching from Local Agent and WebSocket for real-time alerts.
+- Dashboard polls Local Agent status and consumes Alerting service recent alerts + WebSocket updates.

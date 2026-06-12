@@ -1,7 +1,8 @@
 # Service Development Status: Secure Aggregator
 
-**Current Status:** 🟡 In Progress
-**Progress:** 20%
+**Current Status:** 🟢 Completed (MVP)
+**Progress:** 80%
+**Last Updated:** 2026-06-12
 
 ---
 
@@ -9,7 +10,7 @@
 - **Service Name:** secure-aggregator
 - **Domain:** coordinator
 - **Port:** 8002
-- **Protocol:** gRPC
+- **Protocol:** REST (gRPC proto available)
 
 ---
 
@@ -19,15 +20,15 @@
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
 | API Definitions (Proto) | High | 🟢 Completed | 100% |
-| Federated Aggregation Logic | Critical | 🟡 In Progress | 40% |
-| secure aggregation protocols | Critical | 🔴 Not Started | 0% |
-| gRPC Server Setup | High | 🟡 In Progress | 20% |
+| Federated Aggregation Logic (FedAvg) | Critical | 🟢 Completed | 100% |
+| Optional DP Noise (server-side) | High | 🟢 Completed | 100% |
+| REST Aggregation API (`/aggregate`) | High | 🟢 Completed | 100% |
+| gRPC Server Setup | Medium | 🔵 On Hold | - |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Core FedAvg logic implemented using PyTorch.
-- gRPC server skeleton ready.
-- Need to implement advanced secure aggregation (e.g., differential privacy noise addition).
+- Aggregation is implemented as a REST endpoint for interoperability with existing services.
+- Advanced secure aggregation protocols beyond DP-noise (e.g., MPC-style masking) are not implemented.

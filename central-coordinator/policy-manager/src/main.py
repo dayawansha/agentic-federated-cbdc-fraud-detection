@@ -1,54 +1,142 @@
 import logging
 import os
-from fastapi import FastAPI, HTTPException
-from typing import Dict, List, Optional
-from pydantic import BaseModel
 import sys
+from datetime import datetime, timezone
+from typing import Dict, Optional
 
-# Add project root to sys.path to allow importing shared modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+# Ensure `/app` is on the import path inside the container so `shared` can be imported.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from shared.schemas.models import PrivacyBudget
+from sqlalchemy import Column, DateTime, Float, String, create_engine, select
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Policy Manager Service")
 
-# In-memory storage for demonstration (to be replaced by PostgreSQL)
-agent_budgets: Dict[str, PrivacyBudget] = {}
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://user:password@localhost:5432/federated_fraud_db",
+)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+Base = declarative_base()
+
+class AgentBudget(Base):
+    __tablename__ = "agent_budgets"
+
+    agent_id = Column(String, primary_key=True)
+    epsilon = Column(Float, nullable=False)
+    delta = Column(Float, nullable=False)
+    total_spent_epsilon = Column(Float, nullable=False, default=0.0)
+    total_spent_delta = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 class BudgetUpdateRequest(BaseModel):
     agent_id: str
     epsilon_spent: float
     delta_spent: float
 
+class BudgetSetRequest(BaseModel):
+    agent_id: str
+    epsilon: float
+    delta: float
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
+@app.on_event("startup")
+async def startup_event():
+    Base.metadata.create_all(bind=engine)
+
+def _get_or_create_budget(agent_id: str, default_epsilon: float = 10.0, default_delta: float = 1e-5) -> AgentBudget:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        existing = session.get(AgentBudget, agent_id)
+        if existing:
+            return existing
+        budget = AgentBudget(
+            agent_id=agent_id,
+            epsilon=default_epsilon,
+            delta=default_delta,
+            total_spent_epsilon=0.0,
+            total_spent_delta=0.0,
+            updated_at=now,
+        )
+        session.add(budget)
+        session.commit()
+        session.refresh(budget)
+        return budget
+
+def _to_privacy_budget(row: AgentBudget) -> PrivacyBudget:
+    return PrivacyBudget(
+        epsilon=float(row.epsilon),
+        delta=float(row.delta),
+        total_spent_epsilon=float(row.total_spent_epsilon),
+        total_spent_delta=float(row.total_spent_delta),
+    )
+
 @app.get("/policies/budget/{agent_id}", response_model=PrivacyBudget)
 async def get_agent_budget(agent_id: str):
-    if agent_id not in agent_budgets:
-        # Initialize default budget if not exists
-        agent_budgets[agent_id] = PrivacyBudget(epsilon=10.0, delta=1e-5)
-    return agent_budgets[agent_id]
+    budget = _get_or_create_budget(agent_id)
+    return _to_privacy_budget(budget)
 
 @app.post("/policies/budget/update")
 async def update_budget(request: BudgetUpdateRequest):
-    if request.agent_id not in agent_budgets:
-        agent_budgets[request.agent_id] = PrivacyBudget(epsilon=10.0, delta=1e-5)
-    
-    budget = agent_budgets[request.agent_id]
-    
-    # Check if update exceeds total budget
-    if budget.total_spent_epsilon + request.epsilon_spent > budget.epsilon:
-        raise HTTPException(status_code=403, detail="Privacy budget exceeded (epsilon)")
-    
-    budget.total_spent_epsilon += request.epsilon_spent
-    budget.total_spent_delta += request.delta_spent
-    
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        budget = session.get(AgentBudget, request.agent_id)
+        if budget is None:
+            budget = AgentBudget(
+                agent_id=request.agent_id,
+                epsilon=10.0,
+                delta=1e-5,
+                total_spent_epsilon=0.0,
+                total_spent_delta=0.0,
+                updated_at=now,
+            )
+            session.add(budget)
+            session.flush()
+
+        if float(budget.total_spent_epsilon) + float(request.epsilon_spent) > float(budget.epsilon):
+            raise HTTPException(status_code=403, detail="Privacy budget exceeded (epsilon)")
+
+        budget.total_spent_epsilon = float(budget.total_spent_epsilon) + float(request.epsilon_spent)
+        budget.total_spent_delta = float(budget.total_spent_delta) + float(request.delta_spent)
+        budget.updated_at = now
+        session.commit()
+        session.refresh(budget)
+
     logger.info(f"Updated budget for agent {request.agent_id}: ε_spent={budget.total_spent_epsilon}")
-    return {"status": "success", "current_budget": budget}
+    return {"status": "success", "current_budget": _to_privacy_budget(budget)}
+
+@app.post("/policies/budget/set")
+async def set_budget(request: BudgetSetRequest):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        budget = session.get(AgentBudget, request.agent_id)
+        if budget is None:
+            budget = AgentBudget(
+                agent_id=request.agent_id,
+                epsilon=float(request.epsilon),
+                delta=float(request.delta),
+                total_spent_epsilon=0.0,
+                total_spent_delta=0.0,
+                updated_at=now,
+            )
+            session.add(budget)
+        else:
+            budget.epsilon = float(request.epsilon)
+            budget.delta = float(request.delta)
+            budget.updated_at = now
+        session.commit()
+        session.refresh(budget)
+        return {"status": "success", "current_budget": _to_privacy_budget(budget)}
 
 @app.get("/policies/global")
 async def get_global_policies():

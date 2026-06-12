@@ -1,7 +1,8 @@
 # Service Development Status: Model Registry
 
-**Current Status:** 🟡 In Progress
-**Progress:** 20%
+**Current Status:** 🟢 Completed (MVP)
+**Progress:** 75%
+**Last Updated:** 2026-06-12
 
 ---
 
@@ -19,14 +20,15 @@
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
 | API Definitions | High | 🟢 Completed | 100% |
-| Versioning Logic | High | 🟡 In Progress | 40% |
-| MLflow Integration | Medium | 🔴 Not Started | 0% |
-| PostgreSQL Integration | High | 🔴 Not Started | 0% |
-| Artifact Storage (MinIO) | Medium | 🔴 Not Started | 0% |
+| Versioning Logic | High | 🟢 Completed | 100% |
+| PostgreSQL Integration | High | 🟢 Completed | 100% |
+| Artifact Storage (Local Disk) | High | 🟢 Completed | 100% |
+| MLflow Integration | Medium | 🔵 On Hold | - |
+| Artifact Storage (MinIO) | Medium | 🔵 On Hold | - |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Basic versioning API implemented.
-- Integration with MLflow and persistent storage pending.
+- Model metadata is persisted in PostgreSQL.
+- Model artifacts are stored on local disk via `ARTIFACT_DIR` (bytes uploaded via `/models/register`).

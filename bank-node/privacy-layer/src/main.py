@@ -1,14 +1,11 @@
+import io
 import logging
-import os
-import sys
+
+import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import torch
-import io
 
-# Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-from bank_node.privacy_layer.src.privacy_engine import privacy_module
+from src.privacy_engine import privacy_module
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,12 +16,27 @@ class DPRequest(BaseModel):
     weights: bytes
     noise_multiplier: float = 0.01
 
+class DPResponse(BaseModel):
+    weights: bytes
+
+class EncryptRequest(BaseModel):
+    data: bytes
+
+class EncryptResponse(BaseModel):
+    encrypted_data: bytes
+
+class DecryptRequest(BaseModel):
+    encrypted_data: bytes
+
+class DecryptResponse(BaseModel):
+    data: bytes
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
 @app.post("/privacy/apply-dp")
-async def apply_dp(request: DPRequest):
+async def apply_dp(request: DPRequest) -> DPResponse:
     try:
         # Load weights from bytes
         buffer = io.BytesIO(request.weights)
@@ -37,15 +49,22 @@ async def apply_dp(request: DPRequest):
         output_buffer = io.BytesIO()
         torch.save(private_weights, output_buffer)
         
-        return {"weights": output_buffer.getvalue()}
+        return DPResponse(weights=output_buffer.getvalue())
     except Exception as e:
         logger.error(f"Error applying DP: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/privacy/encrypt")
-async def encrypt(data: bytes):
+async def encrypt(request: EncryptRequest) -> EncryptResponse:
     try:
-        return {"encrypted_data": privacy_module.encrypt_model(data)}
+        return EncryptResponse(encrypted_data=privacy_module.encrypt_model(request.data))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/privacy/decrypt")
+async def decrypt(request: DecryptRequest) -> DecryptResponse:
+    try:
+        return DecryptResponse(data=privacy_module.decrypt_model(request.encrypted_data))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

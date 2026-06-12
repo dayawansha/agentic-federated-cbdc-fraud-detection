@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 import asyncio
+import base64
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from typing import Dict, List, TypedDict
 from langgraph.graph import StateGraph, END
@@ -26,6 +28,8 @@ class LocalAgentState(TypedDict):
     training_complete: bool
     privacy_applied: bool
     weights: bytes
+    encrypted_weights: bytes
+    sample_size: int
     metrics: Dict[str, float]
     current_step: str
 
@@ -41,12 +45,18 @@ async def run_local_training(state: LocalAgentState):
     logger.info("Triggering Local GNN Training...")
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(f"{LOCAL_GNN_URL}/train")
+            response = await client.post(
+                f"{LOCAL_GNN_URL}/train",
+                json={"round_id": state["round_id"]},
+                timeout=180.0,
+            )
             if response.status_code == 200:
-                logger.info("Local training successful")
+                payload = response.json()
+                state["weights"] = base64.b64decode(payload["weights"])
+                state["sample_size"] = int(payload.get("sample_size", 0))
+                state["metrics"] = payload.get("metrics", {}) or {}
                 state['training_complete'] = True
-                # Placeholder for weights (in real scenario, fetch from GNN service)
-                state['weights'] = b"model_weights_data"
+                logger.info("Local training successful")
             else:
                 logger.error(f"Training failed: {response.text}")
         except Exception as e:
@@ -62,18 +72,51 @@ async def apply_privacy_measures(state: LocalAgentState):
             # Call Privacy Layer to apply DP
             dp_response = await client.post(
                 f"{PRIVACY_LAYER_URL}/privacy/apply-dp",
-                json={"weights": state.get('weights', b"").hex(), "noise_multiplier": 0.01}
+                json={"weights": base64.b64encode(state.get("weights", b"")).decode("ascii"), "noise_multiplier": 0.01},
+                timeout=180.0,
             )
             if dp_response.status_code == 200:
-                state['weights'] = bytes.fromhex(dp_response.json()["weights"])
+                dp_payload = dp_response.json()
+                state["weights"] = base64.b64decode(dp_payload["weights"])
                 state['privacy_applied'] = True
                 logger.info("Privacy measures applied successfully")
             else:
                 logger.error(f"Privacy application failed: {dp_response.text}")
+
+            encrypt_response = await client.post(
+                f"{PRIVACY_LAYER_URL}/privacy/encrypt",
+                json={"data": base64.b64encode(state.get("weights", b"")).decode("ascii")},
+                timeout=180.0,
+            )
+            if encrypt_response.status_code == 200:
+                encrypt_payload = encrypt_response.json()
+                state["encrypted_weights"] = base64.b64decode(encrypt_payload["encrypted_data"])
+            else:
+                logger.error(f"Encryption failed: {encrypt_response.text}")
         except Exception as e:
             logger.error(f"Error calling Privacy service: {e}")
 
     state['current_step'] = "submitting_update"
+    return state
+
+async def submit_update_to_coordinator(state: LocalAgentState):
+    logger.info("Submitting model update to Coordinator...")
+    async with httpx.AsyncClient() as client:
+        try:
+            payload = {
+                "agent_id": state["agent_id"],
+                "round_id": state["round_id"],
+                "weights": base64.b64encode(state.get("weights", b"")).decode("ascii"),
+                "sample_size": int(state.get("sample_size", 0)),
+                "metrics": state.get("metrics", {}) or {},
+                "client_timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            resp = await client.post(f"{COORDINATOR_URL}/updates/submit", json=payload, timeout=60.0)
+            if resp.status_code != 200:
+                logger.error(f"Coordinator update submission failed: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error submitting update to Coordinator: {e}")
+    state["current_step"] = "done"
     return state
 
 # --- Graph Construction ---
@@ -81,20 +124,33 @@ workflow = StateGraph(LocalAgentState)
 workflow.add_node("check_data", check_data_availability)
 workflow.add_node("train", run_local_training)
 workflow.add_node("privacy", apply_privacy_measures)
+workflow.add_node("submit_update", submit_update_to_coordinator)
 
 workflow.set_entry_point("check_data")
 workflow.add_edge("check_data", "train")
 workflow.add_edge("train", "privacy")
-workflow.add_edge("privacy", END)
+workflow.add_edge("privacy", "submit_update")
+workflow.add_edge("submit_update", END)
 
 app_graph = workflow.compile()
 
 # --- FastAPI Setup ---
 app = FastAPI(title="Local Agent Service")
 
+agent_status: Dict[str, object] = {
+    "agent_id": os.getenv("AGENT_ID", "local-agent"),
+    "last_round_id": None,
+    "last_update_at": None,
+    "last_metrics": {},
+}
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/agent/status")
+async def get_status():
+    return agent_status
 
 @app.post("/agent/round/start")
 async def start_local_round(round_id: str, agent_id: str):
@@ -105,11 +161,18 @@ async def start_local_round(round_id: str, agent_id: str):
         "data_ready": False,
         "training_complete": False,
         "privacy_applied": False,
+        "weights": b"",
+        "encrypted_weights": b"",
+        "sample_size": 0,
         "metrics": {},
         "current_step": "init"
     }
     
     final_state = await app_graph.ainvoke(initial_state)
+    agent_status["agent_id"] = agent_id
+    agent_status["last_round_id"] = round_id
+    agent_status["last_update_at"] = datetime.now(timezone.utc).isoformat()
+    agent_status["last_metrics"] = final_state.get("metrics", {}) if isinstance(final_state, dict) else {}
     return {"status": "success", "final_state": final_state}
 
 if __name__ == "__main__":

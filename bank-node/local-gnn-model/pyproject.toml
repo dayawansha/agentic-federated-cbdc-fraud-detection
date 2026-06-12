@@ -8,8 +8,11 @@ authors = [
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
+    "grpcio>=1.56.0",
     "torch>=2.0.0",
     "torch-geometric>=2.4.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
     "python-dotenv>=1.0.0"
 ]
 

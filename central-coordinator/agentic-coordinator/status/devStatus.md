@@ -1,7 +1,8 @@
 # Service Development Status: Agentic Coordinator
 
-**Current Status:** 🟡 In Progress
-**Progress:** 25%
+**Current Status:** 🟢 Completed (MVP)
+**Progress:** 85%
+**Last Updated:** 2026-06-12
 
 ---
 
@@ -9,7 +10,7 @@
 - **Service Name:** agentic-coordinator
 - **Domain:** coordinator
 - **Port:** 8001
-- **Protocol:** gRPC / REST
+- **Protocol:** REST (gRPC proto available)
 
 ---
 
@@ -19,13 +20,16 @@
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
 | API Definitions (Proto) | High | 🟢 Completed | 100% |
-| Business Logic (SAGA) | Critical | 🟡 In Progress | 20% |
-| LangGraph Integration| Critical | 🟡 In Progress | 30% |
+| Business Logic (Round Orchestration) | Critical | 🟢 Completed | 100% |
+| LangGraph Integration | Critical | 🟢 Completed | 100% |
+| Secure Aggregator Integration | Critical | 🟢 Completed | 100% |
+| Policy Manager Integration | High | 🟢 Completed | 100% |
+| Model Registry Integration | High | 🟢 Completed | 100% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Initial LangGraph workflow for orchestrating federated rounds implemented.
-- Need to integrate with Secure Aggregator and Policy Manager via gRPC/REST.
+- Implemented end-to-end round flow: trigger agents → wait for updates → aggregate via Secure Aggregator → register global model → update privacy budgets.
+- Exposes `/updates/submit` for agents to submit updates and `/rounds/start` to kick off rounds.
