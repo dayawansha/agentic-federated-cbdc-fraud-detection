@@ -3,7 +3,7 @@
 
 **Last Updated:** June 15, 2026  
 **Current Phase:** MVP Complete (End-to-End Round Flow Running)  
-**Overall Progress:** 87%
+**Overall Progress:** 89%
 
 ---
 
@@ -24,7 +24,7 @@
 - **End-to-End FL Round (MVP)**: Implemented a working round flow across Coordinator → Agents → Aggregator → Registry → Policy Manager.
 - **Local GNN Training (Real Data)**: Local GNN trains on processed Elliptic++ shard and returns real model weights and metrics.
 - **Privacy Layer**: Differential privacy noise application and encryption utilities exposed via REST.
-- **Operational Visibility (MVP+)**: Alerting supports recent alerts API and WebSocket broadcast; Dashboard now exposes KPI cards, service health, and full analytics visualizations.
+- **Operational Visibility (MVP+)**: Alerting supports recent alerts API and WebSocket broadcast; Dashboard now exposes KPI cards, service health, full analytics visualizations, and single-entry access through the dashboard service.
 
 ### Key Milestones
 
@@ -69,11 +69,11 @@ Unit Tests:             1 / 10 (partial)
 | Service | Status | Progress | Notes |
 |---------|--------|----------|-------|
 | Local Agent | 🟢 MVP Complete | 80% | Trains + applies privacy + submits update to coordinator |
-| Local GNN | 🟢 MVP Complete | 75% | Trains on processed Elliptic++ shard; returns weights + metrics |
+| Local GNN | 🟢 MVP Complete | 85% | Runtime-validated in minikube; trains on processed Elliptic++ shard and returns weights + metrics |
 | Privacy Layer | 🟢 MVP Complete | 80% | DP + encrypt/decrypt REST endpoints |
-| Transaction Graph | 🟡 In Progress | 70% | Neo4j + CDC producer; basic feature endpoint added |
+| Transaction Graph | 🟡 In Progress | 85% | Neo4j + CDC runtime validated; REST ingest/query APIs and Kafka CDC are working |
 | Fraud Dashboard | 🟢 Feature Complete | 95% | KPI cards, service health, alert analytics, transaction activity, and live alert feed are implemented |
-| Alerting | 🟡 In Progress | 75% | Recent alerts + WS broadcast; optional SMTP |
+| Alerting | 🟡 In Progress | 75% | Recent alerts + WS broadcast validated live; optional SMTP/ticketing still pending |
 
 ---
 
@@ -85,7 +85,7 @@ Unit Tests:             1 / 10 (partial)
 | Shared Contracts/Schemas | 🟢 Completed | REST/OpenAPI contracts and Pydantic schemas ready |
 | Docker Compose | 🟢 Completed | Local multi-service environment ready |
 | CI/CD Pipeline | 🔴 Not Started | - |
-| Kubernetes Manifests | 🟡 In Progress | Helm chart present; service-level maturity still evolving |
+| Kubernetes Manifests | 🟢 Validated Locally | Helm chart and helper scripts are validated with the minikube + docker-driver workflow |
 
 ---
 
@@ -152,7 +152,8 @@ Unit Tests:             1 / 10 (partial)
 | 2026-02-09 | Initial status document created | - |
 | 2026-02-09 | Updated devPlan.md with microservice architecture | - |
 | 2026-06-12 | Updated status to reflect MVP end-to-end round flow + DB persistence | - |
+| 2026-06-15 | Synced project status with validated minikube runtime and completed dashboard analytics work | - |
 
 ---
 
-*Last Updated: June 13, 2026*
+*Last Updated: June 15, 2026*

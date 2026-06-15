@@ -3,8 +3,8 @@
 
 **Version:** 2.0  
 **Created:** February 2026  
-**Updated:** June 13, 2026  
-**Status:** Planning Phase  
+**Updated:** June 15, 2026  
+**Status:** Active Development (MVP Running)  
 **Architecture:** Microservice Architecture
 
 ---
@@ -590,12 +590,12 @@ sequenceDiagram
 
 ## 9. Next Steps
 
-1. [ ] Create microservice folder structure
-2. [ ] Set up shared REST contract definitions
-3. [ ] Create Docker Compose for local development
-4. [ ] Begin Policy Manager (simplest first)
-5. [ ] Weekly progress reviews
+1. [ ] Add automated end-to-end smoke coverage for the validated minikube workflow
+2. [ ] Expand transaction-graph feature engineering beyond basic account statistics
+3. [ ] Add local-gnn inference support
+4. [ ] Strengthen alerting notifications beyond optional SMTP
+5. [ ] Add CI/CD for build, verification, and deployment automation
 
 ---
 
-*Last Updated: June 13, 2026*
+*Last Updated: June 15, 2026*
