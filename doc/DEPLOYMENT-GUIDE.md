@@ -251,7 +251,6 @@ kubectl port-forward svc/transaction-graph 9004:9004
 kubectl port-forward svc/alerting 9005:9005
 kubectl port-forward svc/kafka-ui 8080:8080
 kubectl port-forward svc/neo4j 7474:7474 7687:7687
-kubectl port-forward svc/fraud-dashboard 3000:3000
 ```
 
 Then validate:
@@ -269,7 +268,24 @@ Open these in the browser when needed:
 - `http://localhost:9005/docs`
 - `http://localhost:8080`
 - `http://localhost:7474`
+
+For the dashboard itself, a single port-forward is now enough because the dashboard proxies its upstream APIs inside the cluster:
+
+```bash
+kubectl port-forward svc/fraud-dashboard 3000:3000
+```
+
+Then open:
 - `http://localhost:3000`
+
+The dashboard now routes:
+- `GET /api/local-agent/*`
+- `GET /api/local-gnn/*`
+- `GET /api/privacy-layer/*`
+- `GET /api/transaction-graph/*`
+- `GET /api/alerting/*`
+- `GET /ws/alerts`
+- `GET /kafka-ui/`
 
 For Docker Desktop, also verify:
 

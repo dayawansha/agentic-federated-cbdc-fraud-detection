@@ -1,8 +1,8 @@
 # Development Status: Alerting
 
-**Current Status:** 🟡 In Progress
+**Current Status:** 🟡 In Progress (MVP Runtime Validated)
 **Progress:** 75%
-**Last Updated:** 2026-06-12
+**Last Updated:** 2026-06-15
 
 ---
 
@@ -33,3 +33,4 @@
 ## Notes & Blockers
 - Kafka consumer stores recent alerts in-memory and broadcasts events via WebSocket.
 - SMTP support is optional and controlled by environment variables; SMS/ticketing are not implemented.
+- The service is running in the validated `minikube` deployment and backs the live dashboard feed via `/alerts/recent` and `/ws/alerts`.

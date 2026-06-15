@@ -1,8 +1,8 @@
 # Development Status: Local GNN
 
-**Current Status:** 🟡 In Progress (MVP with Runtime Dataset Fix Implemented)
-**Progress:** 80%
-**Last Updated:** 2026-06-13
+**Current Status:** 🟢 Completed (MVP Runtime Validated)
+**Progress:** 85%
+**Last Updated:** 2026-06-15
 
 ---
 
@@ -36,4 +36,5 @@
 - Implemented loading for processed shards + edges + labels and produces model `state_dict` bytes for federated aggregation.
 - Implemented a runtime dataset-path fix so the service resolves training files correctly in both the repository and container image layouts.
 - Updated the Docker image to bundle the required processed shard, edges, and class-label CSV files for Kubernetes runtime.
-- Deployment verification is currently blocked by a Minikube/Docker overlay filesystem error; the cluster must be recovered before the new local-gnn image can be rolled out and validated live.
+- The service is validated in the current `minikube` deployment and its `/health` endpoint responds successfully on port `9002`.
+- Remaining gaps are outside the MVP path: inference support and broader automated test coverage.
