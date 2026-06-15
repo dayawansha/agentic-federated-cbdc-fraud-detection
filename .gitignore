@@ -5,5 +5,6 @@ __pycache__/
 bank-node/fraud-dashboard/node_modules/
 bank-node/fraud-dashboard/build/
 /logs.txt
+.local-state/
 train-data/EllipticPlusPlus-main/
 train-data/processed/

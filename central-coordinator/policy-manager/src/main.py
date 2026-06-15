@@ -1,16 +1,21 @@
 import logging
 import os
 import sys
+import base64
+import hashlib
+import io
+from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from cryptography.fernet import Fernet, InvalidToken
 
 # Ensure `/app` is on the import path inside the container so `shared` can be imported.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from shared.schemas.models import PrivacyBudget
-from sqlalchemy import Column, DateTime, Float, String, create_engine, select
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, create_engine, desc, select
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +39,26 @@ DATABASE_URL = _build_database_url()
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
+DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
+    "min_agents_per_round": 1,
+    "max_rounds": 50,
+    "aggregation_strategy": "FedAvg",
+    "fallback_aggregation_strategy": "WeightedFedAvg",
+    "low_performance_accuracy": 0.8,
+    "min_update_sample_size": 1,
+    "min_update_accuracy": 0.5,
+    "max_update_loss": 2.5,
+    "min_noise_multiplier": 0.0,
+    "max_noise_multiplier": 1.0,
+    "max_accuracy_peer_delta": 0.35,
+    "max_loss_peer_delta": 1.5,
+    "required_metrics": ["accuracy", "f1_score"],
+    "allowed_asset_types": ["CBDC"],
+    "require_encrypted_updates": True,
+    "minimum_agent_reliability_score": 0.25,
+    "adaptive_rejected_update_ratio": 0.25,
+    "adaptive_strategy_on_rejection": "WeightedFedAvg",
+}
 
 class AgentBudget(Base):
     __tablename__ = "agent_budgets"
@@ -45,6 +70,43 @@ class AgentBudget(Base):
     total_spent_delta = Column(Float, nullable=False, default=0.0)
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
+class GlobalPolicyRow(Base):
+    __tablename__ = "global_policies"
+
+    policy_name = Column(String, primary_key=True)
+    policy_version = Column(Integer, nullable=False, default=1)
+    policy_payload = Column(JSON, nullable=False, default=dict)
+    updated_by = Column(String, nullable=False, default="system")
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+class GovernanceAgentRow(Base):
+    __tablename__ = "governance_agents"
+
+    agent_id = Column(String, primary_key=True)
+    active = Column(Boolean, nullable=False, default=True)
+    allowed_asset_types = Column(JSON, nullable=False, default=list)
+    minimum_reliability_score = Column(Float, nullable=False, default=0.0)
+    notes = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+class GovernanceEventRow(Base):
+    __tablename__ = "governance_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(String, nullable=True)
+    event_type = Column(String, nullable=False)
+    details = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+class SecureAggregationMaskRow(Base):
+    __tablename__ = "secure_aggregation_masks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    round_id = Column(String, nullable=False)
+    agent_id = Column(String, nullable=False)
+    encrypted_mask_share = Column(String, nullable=False)
+    submitted_at = Column(DateTime(timezone=True), nullable=False)
+
 class BudgetUpdateRequest(BaseModel):
     agent_id: str
     epsilon_spent: float
@@ -54,6 +116,62 @@ class BudgetSetRequest(BaseModel):
     agent_id: str
     epsilon: float
     delta: float
+
+class GlobalPolicyUpdateRequest(BaseModel):
+    policies: Dict[str, Any]
+    updated_by: str = "system"
+
+class GovernanceAgentRequest(BaseModel):
+    agent_id: str
+    active: bool = True
+    allowed_asset_types: List[str] = ["CBDC"]
+    minimum_reliability_score: float = 0.0
+    notes: Optional[str] = None
+
+class GovernanceAgentResponse(BaseModel):
+    agent_id: str
+    active: bool
+    allowed_asset_types: List[str]
+    minimum_reliability_score: float
+    notes: Optional[str] = None
+    updated_at: datetime
+
+class GovernanceEventResponse(BaseModel):
+    id: int
+    agent_id: Optional[str] = None
+    event_type: str
+    details: Dict[str, Any]
+    created_at: datetime
+
+class SecureAggregationMaskSubmitRequest(BaseModel):
+    round_id: str
+    agent_id: str
+    encrypted_mask_share: str
+
+class SecureAggregationMaskAggregateItem(BaseModel):
+    agent_id: str
+    sample_size: int
+    reliability_score: float = 1.0
+
+class SecureAggregationMaskAggregateRequest(BaseModel):
+    round_id: str
+    strategy: str = "FedAvg"
+    updates: List[SecureAggregationMaskAggregateItem]
+
+class SecureAggregationMaskAggregateResponse(BaseModel):
+    aggregate_mask: str
+    participant_count: int
+
+def _resolve_transport_cipher() -> Fernet:
+    explicit_key = os.getenv("PRIVACY_FERNET_KEY")
+    if explicit_key:
+        return Fernet(explicit_key.encode("ascii"))
+
+    seed = os.getenv("PRIVACY_KEY_SEED", "development-only-shared-key")
+    derived_key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode("utf-8")).digest())
+    return Fernet(derived_key)
+
+TRANSPORT_CIPHER = _resolve_transport_cipher()
 
 @app.get("/health")
 async def health_check():
@@ -82,6 +200,39 @@ def _get_or_create_budget(agent_id: str, default_epsilon: float = 10.0, default_
         session.refresh(budget)
         return budget
 
+def _normalize_global_policies(payload: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    merged = dict(DEFAULT_GLOBAL_POLICIES)
+    if payload:
+        merged.update(dict(payload))
+    merged["allowed_asset_types"] = [str(asset_type) for asset_type in (merged.get("allowed_asset_types") or ["CBDC"])]
+    merged["required_metrics"] = [str(metric) for metric in (merged.get("required_metrics") or ["accuracy", "f1_score"])]
+    merged["require_encrypted_updates"] = bool(merged.get("require_encrypted_updates", True))
+    merged["minimum_agent_reliability_score"] = float(merged.get("minimum_agent_reliability_score", 0.25))
+    merged["adaptive_rejected_update_ratio"] = float(merged.get("adaptive_rejected_update_ratio", 0.25))
+    return merged
+
+def _record_governance_event(event_type: str, details: Dict[str, Any], agent_id: Optional[str] = None) -> None:
+    with SessionLocal() as session:
+        session.add(
+            GovernanceEventRow(
+                agent_id=agent_id,
+                event_type=event_type,
+                details=details or {},
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.commit()
+
+def _to_governance_agent_response(row: GovernanceAgentRow) -> GovernanceAgentResponse:
+    return GovernanceAgentResponse(
+        agent_id=row.agent_id,
+        active=bool(row.active),
+        allowed_asset_types=list(row.allowed_asset_types or []),
+        minimum_reliability_score=float(row.minimum_reliability_score),
+        notes=row.notes,
+        updated_at=row.updated_at,
+    )
+
 def _to_privacy_budget(row: AgentBudget) -> PrivacyBudget:
     return PrivacyBudget(
         epsilon=float(row.epsilon),
@@ -90,7 +241,34 @@ def _to_privacy_budget(row: AgentBudget) -> PrivacyBudget:
         total_spent_delta=float(row.total_spent_delta),
     )
 
-@app.get("/policies/budget/{agent_id}", response_model=PrivacyBudget)
+def _aggregation_weight(item: SecureAggregationMaskAggregateItem, strategy: str) -> float:
+    base_weight = float(max(0, int(item.sample_size)))
+    if strategy == "WeightedFedAvg":
+        return base_weight * max(0.1, float(item.reliability_score))
+    return base_weight
+
+def _aggregate_mask_payloads(mask_payloads: List[bytes], aggregation_weights: List[float]) -> bytes:
+    if not mask_payloads:
+        raise HTTPException(status_code=400, detail="No secure aggregation masks provided")
+    total_weight = float(sum(aggregation_weights))
+    if total_weight <= 0:
+        raise HTTPException(status_code=400, detail="Invalid secure aggregation mask weights")
+
+    import torch
+
+    base_state = torch.load(io.BytesIO(mask_payloads[0]))
+    aggregate_state = {key: torch.zeros_like(value).float() for key, value in base_state.items()}
+    for payload, weight in zip(mask_payloads, aggregation_weights):
+        mask_state = torch.load(io.BytesIO(payload))
+        normalized_weight = float(weight) / total_weight
+        for key in aggregate_state:
+            aggregate_state[key] += mask_state[key].float() * normalized_weight
+
+    buffer = io.BytesIO()
+    torch.save(aggregate_state, buffer)
+    return buffer.getvalue()
+
+@app.get("/policies/budget/{agent_id:path}", response_model=PrivacyBudget)
 async def get_agent_budget(agent_id: str):
     budget = _get_or_create_budget(agent_id)
     return _to_privacy_budget(budget)
@@ -122,6 +300,16 @@ async def update_budget(request: BudgetUpdateRequest):
         session.refresh(budget)
 
     logger.info(f"Updated budget for agent {request.agent_id}: ε_spent={budget.total_spent_epsilon}")
+    _record_governance_event(
+        "privacy_budget_updated",
+        {
+            "epsilon_spent": float(request.epsilon_spent),
+            "delta_spent": float(request.delta_spent),
+            "total_spent_epsilon": float(budget.total_spent_epsilon),
+            "total_spent_delta": float(budget.total_spent_delta),
+        },
+        agent_id=request.agent_id,
+    )
     return {"status": "success", "current_budget": _to_privacy_budget(budget)}
 
 @app.post("/policies/budget/set")
@@ -145,16 +333,206 @@ async def set_budget(request: BudgetSetRequest):
             budget.updated_at = now
         session.commit()
         session.refresh(budget)
+        _record_governance_event(
+            "privacy_budget_set",
+            {"epsilon": float(request.epsilon), "delta": float(request.delta)},
+            agent_id=request.agent_id,
+        )
         return {"status": "success", "current_budget": _to_privacy_budget(budget)}
 
 @app.get("/policies/global")
 async def get_global_policies():
-    return {
-        "min_agents_per_round": 3,
-        "max_rounds": 50,
-        "aggregation_strategy": "FedAvg",
-        "allowed_asset_types": ["CBDC"]
-    }
+    with SessionLocal() as session:
+        row = session.get(GlobalPolicyRow, "global")
+        if row is None:
+            return _normalize_global_policies(None)
+        normalized = _normalize_global_policies(row.policy_payload or {})
+        normalized["policy_version"] = int(row.policy_version)
+        normalized["updated_by"] = row.updated_by
+        normalized["updated_at"] = row.updated_at.isoformat()
+        return normalized
+
+@app.post("/policies/global")
+async def update_global_policies(request: GlobalPolicyUpdateRequest):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        row = session.get(GlobalPolicyRow, "global")
+        if row is None:
+            current_payload = dict(DEFAULT_GLOBAL_POLICIES)
+            version = 1
+            row = GlobalPolicyRow(
+                policy_name="global",
+                policy_version=version,
+                policy_payload=current_payload,
+                updated_by=request.updated_by,
+                updated_at=now,
+            )
+            session.add(row)
+            session.flush()
+        merged = _normalize_global_policies({**(row.policy_payload or {}), **(request.policies or {})})
+        row.policy_payload = merged
+        row.policy_version = int(row.policy_version) + 1
+        row.updated_by = request.updated_by
+        row.updated_at = now
+        session.commit()
+        session.refresh(row)
+
+    _record_governance_event(
+        "global_policy_updated",
+        {"updated_by": request.updated_by, "policy_version": int(row.policy_version), "policies": row.policy_payload or {}},
+    )
+    response = _normalize_global_policies(row.policy_payload or {})
+    response["policy_version"] = int(row.policy_version)
+    response["updated_by"] = row.updated_by
+    response["updated_at"] = row.updated_at.isoformat()
+    return response
+
+@app.get("/governance/agent/{agent_id:path}", response_model=GovernanceAgentResponse)
+async def get_governance_agent(agent_id: str):
+    with SessionLocal() as session:
+        row = session.get(GovernanceAgentRow, agent_id)
+        if row is None:
+            row = GovernanceAgentRow(
+                agent_id=agent_id,
+                active=True,
+                allowed_asset_types=["CBDC"],
+                minimum_reliability_score=0.0,
+                notes=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+        return _to_governance_agent_response(row)
+
+@app.post("/governance/agent", response_model=GovernanceAgentResponse)
+async def upsert_governance_agent(request: GovernanceAgentRequest):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        row = session.get(GovernanceAgentRow, request.agent_id)
+        if row is None:
+            row = GovernanceAgentRow(
+                agent_id=request.agent_id,
+                active=bool(request.active),
+                allowed_asset_types=list(request.allowed_asset_types or ["CBDC"]),
+                minimum_reliability_score=float(request.minimum_reliability_score),
+                notes=request.notes,
+                updated_at=now,
+            )
+            session.add(row)
+        else:
+            row.active = bool(request.active)
+            row.allowed_asset_types = list(request.allowed_asset_types or ["CBDC"])
+            row.minimum_reliability_score = float(request.minimum_reliability_score)
+            row.notes = request.notes
+            row.updated_at = now
+        session.commit()
+        session.refresh(row)
+
+    _record_governance_event(
+        "governance_agent_upserted",
+        {
+            "active": bool(request.active),
+            "allowed_asset_types": list(request.allowed_asset_types or ["CBDC"]),
+            "minimum_reliability_score": float(request.minimum_reliability_score),
+            "notes": request.notes,
+        },
+        agent_id=request.agent_id,
+    )
+    return _to_governance_agent_response(row)
+
+@app.get("/governance/audit", response_model=List[GovernanceEventResponse])
+async def list_governance_audit(limit: int = 50):
+    with SessionLocal() as session:
+        rows = (
+            session.execute(
+                select(GovernanceEventRow).order_by(desc(GovernanceEventRow.created_at)).limit(max(1, min(int(limit), 200)))
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            GovernanceEventResponse(
+                id=int(row.id),
+                agent_id=row.agent_id,
+                event_type=row.event_type,
+                details=row.details or {},
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+@app.post("/secure-aggregation/masks/submit")
+async def submit_secure_aggregation_mask(request: SecureAggregationMaskSubmitRequest):
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        existing = (
+            session.execute(
+                select(SecureAggregationMaskRow)
+                .where(SecureAggregationMaskRow.round_id == request.round_id)
+                .where(SecureAggregationMaskRow.agent_id == request.agent_id)
+            )
+            .scalars()
+            .first()
+        )
+        if existing is None:
+            existing = SecureAggregationMaskRow(
+                round_id=request.round_id,
+                agent_id=request.agent_id,
+                encrypted_mask_share=request.encrypted_mask_share,
+                submitted_at=now,
+            )
+            session.add(existing)
+        else:
+            existing.encrypted_mask_share = request.encrypted_mask_share
+            existing.submitted_at = now
+        session.commit()
+
+    _record_governance_event(
+        "secure_aggregation_mask_submitted",
+        {"round_id": request.round_id},
+        agent_id=request.agent_id,
+    )
+    return {"status": "stored"}
+
+@app.post("/secure-aggregation/masks/aggregate", response_model=SecureAggregationMaskAggregateResponse)
+async def aggregate_secure_aggregation_masks(request: SecureAggregationMaskAggregateRequest):
+    try:
+        with SessionLocal() as session:
+            rows = (
+                session.execute(
+                    select(SecureAggregationMaskRow).where(SecureAggregationMaskRow.round_id == request.round_id)
+                )
+                .scalars()
+                .all()
+            )
+        row_map = {row.agent_id: row for row in rows}
+        missing_agents = [item.agent_id for item in request.updates if item.agent_id not in row_map]
+        if missing_agents:
+            raise HTTPException(status_code=400, detail=f"Missing secure aggregation masks for: {', '.join(missing_agents)}")
+
+        mask_payloads: List[bytes] = []
+        aggregation_weights: List[float] = []
+        for item in request.updates:
+            row = row_map[item.agent_id]
+            try:
+                encrypted_mask = base64.b64decode(row.encrypted_mask_share)
+                mask_payload = TRANSPORT_CIPHER.decrypt(encrypted_mask)
+            except InvalidToken as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid secure aggregation mask for {item.agent_id}") from exc
+            mask_payloads.append(mask_payload)
+            aggregation_weights.append(_aggregation_weight(item, request.strategy))
+
+        aggregate_mask = _aggregate_mask_payloads(mask_payloads, aggregation_weights)
+        return SecureAggregationMaskAggregateResponse(
+            aggregate_mask=base64.b64encode(aggregate_mask).decode("ascii"),
+            participant_count=len(mask_payloads),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to aggregate secure aggregation masks: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 if __name__ == "__main__":
     import uvicorn

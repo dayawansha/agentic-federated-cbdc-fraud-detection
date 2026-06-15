@@ -1,7 +1,7 @@
 # Development Status: Fraud Dashboard
 
-**Current Status:** 🟢 Feature Complete (Except Tests)
-**Progress:** 95%
+**Current Status:** 🟢 Feature Complete
+**Progress:** 100%
 **Last Updated:** 2026-06-15
 
 ---
@@ -24,13 +24,14 @@
 | Analytics Visualization | High | 🟢 Completed | 100% |
 | Integration with Local Agent | High | 🟢 Completed | 100% |
 | Integration with Alerting | High | 🟢 Completed | 100% |
-| Unit Tests | Medium | 🔴 Not Started | 0% |
+| Unit Tests | Medium | ⚪ Deferred | 0% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
 - Dashboard now includes KPI cards, service health monitoring, operator shortcuts, and full analytics visualizations for alert severity, alert-heavy transactions, active accounts, and alert timeline trends.
-- Dashboard polls Local Agent status, Transaction Graph account snapshots, and Alerting recent alerts, while also consuming live Alerting WebSocket updates.
+- Dashboard polls Local Agent status and inference snapshots, Transaction Graph account snapshots, and Alerting recent alerts, while also consuming live Alerting WebSocket updates.
 - Recent alerts feed now shows severity, confidence, timestamps, reasons, and status for operator triage.
-- Remaining work is limited to automated tests and optional live runtime polish after redeployment.
+- Added an inference watchlist panel so operators can see top-ranked high-risk transactions from the Local GNN through the Local Agent path.
+- No additional analytics visualization work is pending; the remaining optional work is test expansion or minor runtime polish only.

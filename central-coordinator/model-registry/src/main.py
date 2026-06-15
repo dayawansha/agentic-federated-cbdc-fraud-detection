@@ -1,8 +1,9 @@
 import logging
 import os
 import uuid
+import base64
 from fastapi import FastAPI, HTTPException
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
@@ -49,7 +50,7 @@ class RegisterModelRequest(BaseModel):
     metrics: Dict[str, float] = {}
     artifact_path: Optional[str] = None
     is_global: bool = True
-    weights: Optional[bytes] = None
+    weights: Optional[str] = None
 
 class ModelVersion(BaseModel):
     version_id: str
@@ -57,6 +58,10 @@ class ModelVersion(BaseModel):
     metrics: Dict[str, float]
     artifact_path: str
     is_global: bool = True
+
+class ModelWeightsResponse(BaseModel):
+    version_id: str
+    weights: str
 
 @app.on_event("startup")
 async def startup_event():
@@ -77,7 +82,7 @@ async def register_model(request: RegisterModelRequest):
         filename = f"{version_id}.pt"
         artifact_path = os.path.join(ARTIFACT_DIR, filename)
         with open(artifact_path, "wb") as f:
-            f.write(request.weights)
+            f.write(base64.b64decode(request.weights))
 
     if not artifact_path:
         raise HTTPException(status_code=400, detail="artifact_path or weights must be provided")
@@ -109,6 +114,28 @@ async def get_latest_model():
             artifact_path=row.artifact_path,
             is_global=row.is_global,
         )
+
+def _read_artifact_base64(version_id: str, artifact_path: str) -> ModelWeightsResponse:
+    if not os.path.exists(artifact_path):
+        raise HTTPException(status_code=404, detail=f"Artifact not found for model version {version_id}")
+    with open(artifact_path, "rb") as f:
+        payload = base64.b64encode(f.read()).decode("ascii")
+    return ModelWeightsResponse(version_id=version_id, weights=payload)
+
+@app.get("/models/latest/weights", response_model=ModelWeightsResponse)
+async def get_latest_model_weights():
+    latest = await get_latest_model()
+    return _read_artifact_base64(latest.version_id, latest.artifact_path)
+
+@app.get("/models/{version_id}/weights", response_model=ModelWeightsResponse)
+async def get_model_weights(version_id: str):
+    with SessionLocal() as session:
+        row = session.execute(
+            select(ModelVersionRow).where(ModelVersionRow.version_id == version_id).limit(1)
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Model version not found")
+        return _read_artifact_base64(row.version_id, row.artifact_path)
 
 @app.get("/models/versions", response_model=List[ModelVersion])
 async def list_versions():

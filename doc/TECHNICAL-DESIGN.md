@@ -6,7 +6,7 @@
 **Author:** WAD Dusman Nalin Dayawansha (K2557706)  
 **Supervisor:** Dr. Madhawa Ranawake  
 **Institution:** Kingston University  
-**Document Status:** Draft for Review
+**Document Status:** Target Architecture with Prototype Alignment Notes
 
 ---
 
@@ -34,6 +34,22 @@
 ## 1. Executive Summary
 
 This technical design document outlines the architecture and implementation strategy for an **Agentic Federated Learning Framework** designed to detect fraud in Central Bank Digital Currency (CBDC) networks while preserving privacy and regulatory compliance.
+
+### Prototype Alignment Note
+
+This document describes both:
+
+- the **target-state architecture** for a multi-institution CBDC fraud detection platform, and
+- the **current prototype implementation** that validates the architecture with one active bank node and one central coordinator domain.
+
+Unless a section explicitly states otherwise, the architecture should be read as **multi-bank extensible**, while the currently implemented runtime path is:
+
+- **Coordinator domain**: `agentic-coordinator`, `secure-aggregator`, `policy-manager`, `model-registry`
+- **Bank node domain**: `local-agent`, `local-gnn-model`, `privacy-layer`, `transaction-graph`, `alerting`, `fraud-dashboard`
+- **Current FL control plane**: REST-based orchestration
+- **Current async/event path**: Kafka for transaction events and fraud alerts
+- **Current registry/artifact path**: PostgreSQL metadata + local-disk artifacts
+- **Current privacy path**: DP noise, encrypted update transport, coordinator-side protected update validation, and heuristic suspicious-update screening
 
 ### Key Design Principles
 
@@ -134,6 +150,8 @@ flowchart TB
 
 ### 2.2 Deployment Topology
 
+The topology below represents the **target deployment model** for a multi-institution rollout. The current prototype validates the same domain separation with one active bank node and one central coordinator domain.
+
 ```mermaid
 flowchart LR
     subgraph "Central Bank Cluster"
@@ -152,11 +170,11 @@ flowchart LR
         PP2["Provider 2<br/>Local Node"]
     end
     
-    B1 <-.->|"TLS 1.3 + REST"| SEC
-    B2 <-.->|"TLS 1.3 + REST"| SEC
-    B3 <-.->|"TLS 1.3 + REST"| SEC
-    PP1 <-.->|"TLS 1.3 + REST"| SEC
-    PP2 <-.->|"TLS 1.3 + REST"| SEC
+    B1 <-.->|"Target: TLS 1.3 + REST"| SEC
+    B2 <-.->|"Target: TLS 1.3 + REST"| SEC
+    B3 <-.->|"Target: TLS 1.3 + REST"| SEC
+    PP1 <-.->|"Target: TLS 1.3 + REST"| SEC
+    PP2 <-.->|"Target: TLS 1.3 + REST"| SEC
     SEC <--> CB
 ```
 
@@ -170,10 +188,10 @@ flowchart LR
 |-----------|---------------|------------|
 | **Local Agent** | Autonomous training, anomaly detection, model updates | Python, PyTorch |
 | **Local GNN** | Transaction graph analysis, fraud pattern detection | PyTorch Geometric |
-| **Agentic Coordinator** | Training orchestration, round scheduling, conflict resolution | LangChain/AutoGen |
-| **Secure Aggregator** | Secure model aggregation, weight averaging | Flower Framework |
-| **Privacy Layer** | Differential privacy, secure aggregation | PySyft, Opacus |
-| **Transaction Graph** | Graph representation of transactions | NetworkX, DGL |
+| **Agentic Coordinator** | Training orchestration, round scheduling, policy-aware validation, suspicious-update screening | FastAPI, LangGraph |
+| **Secure Aggregator** | FedAvg aggregation of protected model updates | FastAPI, PyTorch |
+| **Privacy Layer** | Differential privacy, encrypted transport of update payloads | FastAPI, custom privacy engine, `cryptography` |
+| **Transaction Graph** | Graph representation of transactions | Neo4j, Kafka, FastAPI |
 
 ### 3.2 Local Agent Specification
 
@@ -759,6 +777,8 @@ flowchart TD
 
 ### 9.2 Network Security
 
+The table below reflects the **target-state security posture**. The current prototype demonstrates encrypted update transport and protected update validation inside the federated workflow, but does **not** yet claim full mTLS, certificate-based identity, HSM-backed PKI, or complete enterprise key-management deployment.
+
 | Layer | Mechanism | Purpose |
 |-------|-----------|---------|
 | **Transport** | TLS 1.3 with mTLS | Encrypted communication |
@@ -839,10 +859,10 @@ gantt
 | Phase | Milestone | Deliverable |
 |-------|-----------|-------------|
 | **Phase 1-2** | M1: Data Ready | Elliptic++ dataset prepared as CBDC transaction graph |
-| **Phase 3** | M2: FL Baseline | Working Flower-based federated learning setup |
+| **Phase 3** | M2: FL Baseline | Working REST-based federated learning baseline with reusable global model lifecycle |
 | **Phase 4** | M3: GNN Prototype | Trained GNN model with baseline fraud detection |
-| **Phase 4** | M4: Privacy Integration | DP and secure aggregation functional |
-| **Phase 4** | M5: Agentic Coordination | Meta-agent orchestrating training rounds |
+| **Phase 4** | M4: Privacy Integration | DP, encrypted update transport, and protected-update validation functional |
+| **Phase 4** | M5: Agentic Coordination | Meta-agent orchestrating training rounds with policy-aware gating and suspicious-update screening |
 | **Phase 4** | M6: Adaptive System | Self-improving fraud detection pipeline |
 | **Phase 5** | M7: Evaluation Complete | Performance report, comparison with baselines |
 | **Phase 6** | M8: Dissertation Submitted | Final MSc dissertation |
@@ -889,6 +909,8 @@ flowchart LR
 
 ### 11.3 Evaluation Experiments
 
+The experiments below represent the **full evaluation target** for the research design. The current prototype already supports local-metric reporting (`accuracy`, `precision`, `recall`, `F1-score`, `ROC-AUC`) and coordinator-driven privacy-aware round execution, while larger multi-bank scalability and adversarial-resilience campaigns remain future extensions.
+
 | Experiment | Objective | Setup |
 |------------|-----------|-------|
 | **E1: Detection Accuracy** | Compare fraud detection with baselines | 5 simulated banks, 100K transactions |
@@ -908,11 +930,11 @@ flowchart LR
 | **Language** | Python | 3.10+ | Primary development |
 | **Deep Learning** | PyTorch | 2.0+ | Neural network training |
 | **Graph Learning** | PyTorch Geometric | 2.3+ | GNN implementation |
-| **Federated Learning** | Flower | 1.5+ | FL orchestration |
-| **Privacy** | Opacus | 1.4+ | Differential privacy |
-| **Secure Computation** | PySyft | 0.8+ | Secure aggregation |
-| **Graph Processing** | NetworkX | 3.0+ | Graph manipulation |
-| **Agent Framework** | LangChain | 0.1+ | Agentic reasoning |
+| **Federated Learning** | Custom REST + LangGraph orchestration | Current | FL round control and coordination |
+| **Privacy** | Custom privacy engine + `cryptography` | Current | Differential privacy utilities and encrypted payload transport |
+| **Secure Computation** | Heuristic protected-update validation | Current | Protected update screening before aggregation |
+| **Graph Processing** | Neo4j + Kafka | Current | Transaction graph storage and event propagation |
+| **Agent Framework** | LangGraph | Current | Agentic workflow orchestration |
 | **Visualization** | PyVis | 0.3+ | Fraud network visualization |
 
 ### 12.2 Infrastructure Technologies
@@ -920,8 +942,8 @@ flowchart LR
 | Category | Technology | Purpose |
 |----------|------------|---------|
 | **Frontend Dashboard** | React.js | Fraud monitoring and analytics dashboard |
-| **Event Streaming** | Apache Kafka | CDC-based message propagation and decoupled service communication |
-| **Change Data Capture** | CDC | Capture transaction state changes across distributed services |
+| **Event Streaming** | Apache Kafka | Transaction and fraud-alert event propagation |
+| **Change Data Capture** | Service-level event publication | Lightweight transaction state propagation in the prototype |
 | **Synchronous Communication** | HTTP/REST | Real-time service-to-service interactions |
 | **Containerization** | Docker | Portability, reproducibility, consistent execution |
 | **Orchestration** | Kubernetes (K8s) | Horizontal scaling, fault tolerance, resilient service management |

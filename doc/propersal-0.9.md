@@ -368,7 +368,7 @@ The transaction graph remains entirely local, and raw data is never exposed exte
 - **PyTorch Geometric (PyG):** Used for implementing Graph Neural Network (GNN) models on transaction graphs.
 
 ### 3) Federated Learning
-- **Flower / TensorFlow Federated:** Used to coordinate federated training rounds, client participation, and model aggregation.
+- **Custom REST-Based Federated Orchestration:** The current prototype coordinates training rounds, client participation, and aggregation through dedicated microservices. Flower or TensorFlow Federated remain optional future alternatives rather than current dependencies.
 
 ### 4) Agentic Components
 - **Custom Agent Logic:** Implements autonomous coordination at the Central Coordinator Node and decision-making at Bank Nodes.
@@ -379,7 +379,7 @@ The transaction graph remains entirely local, and raw data is never exposed exte
 
 ### 6) Privacy & Security
 - **Differential Privacy:** Applied to local model updates before sharing.  
-- **Encryption (TLS):** Secures communication between Bank Nodes and the Central Coordinator Node.
+- **Encryption:** The prototype currently encrypts model-update payloads and validates protected submissions in the federated workflow. Full transport-hardening controls such as mTLS remain target-state enhancements.
 
 ### 7) Deployment & Infrastructure
 - **Docker:** Containerization of all system components.  
@@ -405,7 +405,7 @@ The transaction graph remains entirely local, and raw data is never exposed exte
 
 - PyTorch: Deep learning framework for model development.  
 - PyTorch Geometric (PyG): Graph Neural Network implementation on transaction graphs.  
-- Flower: Federated learning coordination and aggregation.  
+- Custom microservice orchestration: Federated learning coordination and aggregation in the current prototype.  
 - NetworkX: Construction and management of transaction graphs.  
 - Pandas & NumPy: Data preprocessing and feature engineering.
 

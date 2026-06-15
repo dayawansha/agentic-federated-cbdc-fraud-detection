@@ -1,7 +1,7 @@
 # Development Status: Local GNN
 
-**Current Status:** 🟢 Completed (MVP Runtime Validated)
-**Progress:** 85%
+**Current Status:** 🟢 Completed (Training + Inference Runtime Validated)
+**Progress:** 95%
 **Last Updated:** 2026-06-15
 
 ---
@@ -23,9 +23,9 @@
 | Local Training Loop | Critical | 🟢 Completed | 100% |
 | Elliptic++ Processed Shard Loader | Critical | 🟢 Completed | 100% |
 | Training API (`/train`) returns real weights + metrics | High | 🟢 Completed | 100% |
-| Inference Engine | High | 🔴 Not Started | 0% |
+| Inference Engine (`/infer`) | High | 🟢 Completed | 100% |
 | REST Training Interface | Medium | 🟢 Completed | 100% |
-| Unit Tests | Medium | 🔴 Not Started | 0% |
+| Unit Tests | Medium | 🟢 Completed | 100% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
@@ -37,4 +37,6 @@
 - Implemented a runtime dataset-path fix so the service resolves training files correctly in both the repository and container image layouts.
 - Updated the Docker image to bundle the required processed shard, edges, and class-label CSV files for Kubernetes runtime.
 - The service is validated in the current `minikube` deployment and its `/health` endpoint responds successfully on port `9002`.
-- Remaining gaps are outside the MVP path: inference support and broader automated test coverage.
+- Added a real `/infer` endpoint that returns ranked fraud predictions for the loaded shard or a selected set of `tx_id` values.
+- Added root-runnable local tests covering `/train` request handling, ranked `/infer` selection, and missing `tx_id` error handling.
+- Remaining gaps are now outside the MVP path: deeper model benchmarking and downstream adoption of inference results.

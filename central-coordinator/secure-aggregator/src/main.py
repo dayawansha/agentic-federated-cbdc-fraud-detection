@@ -1,17 +1,32 @@
 import logging
 import io
+import base64
+import hashlib
+import os
 from typing import Dict, List, Optional
 
 import torch
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def _resolve_transport_cipher() -> Fernet:
+    explicit_key = os.getenv("PRIVACY_FERNET_KEY")
+    if explicit_key:
+        return Fernet(explicit_key.encode("ascii"))
+
+    seed = os.getenv("PRIVACY_KEY_SEED", "development-only-shared-key")
+    derived_key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode("utf-8")).digest())
+    return Fernet(derived_key)
+
+TRANSPORT_CIPHER = _resolve_transport_cipher()
+
 class SecureAggregator:
     @staticmethod
-    def federated_averaging(model_updates: List[bytes], sample_sizes: List[int]) -> bytes:
+    def federated_averaging(model_updates: List[bytes], aggregation_weights: List[float]) -> bytes:
         """
         Performs Federated Averaging (FedAvg) on a list of model updates.
         Updates are expected to be serialized PyTorch state_dicts.
@@ -19,7 +34,9 @@ class SecureAggregator:
         if not model_updates:
             return b""
         
-        total_samples = sum(sample_sizes)
+        total_weight = sum(aggregation_weights)
+        if total_weight <= 0:
+            raise HTTPException(status_code=400, detail="Invalid aggregation weights")
         # Load the first update as the base
         base_update = torch.load(io.BytesIO(model_updates[0]))
         
@@ -29,7 +46,7 @@ class SecureAggregator:
         # Aggregate weights
         for i, update_bytes in enumerate(model_updates):
             client_state = torch.load(io.BytesIO(update_bytes))
-            weight = sample_sizes[i] / total_samples
+            weight = aggregation_weights[i] / total_weight
             
             for key in global_state:
                 global_state[key] += client_state[key].float() * weight
@@ -53,9 +70,15 @@ class SecureAggregator:
 
 class AggregationItem(BaseModel):
     agent_id: str
-    weights: bytes
+    weights: str
+    encrypted_weights: Optional[str] = None
+    protected_payload_sha256: Optional[str] = None
+    encrypted_payload_sha256: Optional[str] = None
     sample_size: int
+    reliability_score: float = 1.0
     metrics: Dict[str, float] = {}
+    privacy_applied: bool = False
+    encryption_applied: bool = False
 
 class AggregateRequest(BaseModel):
     round_id: str
@@ -65,8 +88,39 @@ class AggregateRequest(BaseModel):
 
 class AggregateResponse(BaseModel):
     success: bool
-    aggregated_weights: bytes
+    aggregated_weights: str
     global_metrics: Dict[str, float]
+
+def _resolve_update_payload(update: AggregationItem) -> bytes:
+    if not update.privacy_applied:
+        raise HTTPException(status_code=400, detail=f"Update from {update.agent_id} is missing privacy protection")
+
+    if update.encryption_applied:
+        if not update.encrypted_weights:
+            raise HTTPException(status_code=400, detail=f"Encrypted payload missing for {update.agent_id}")
+        try:
+            encrypted_payload = base64.b64decode(update.encrypted_weights)
+            if update.encrypted_payload_sha256:
+                actual_encrypted_hash = hashlib.sha256(update.encrypted_weights.encode("ascii")).hexdigest()
+                if actual_encrypted_hash != update.encrypted_payload_sha256:
+                    raise HTTPException(status_code=400, detail=f"Encrypted commitment mismatch for {update.agent_id}")
+            decrypted_payload = TRANSPORT_CIPHER.decrypt(encrypted_payload)
+            if update.protected_payload_sha256:
+                protected_payload_b64 = base64.b64encode(decrypted_payload).decode("ascii")
+                actual_protected_hash = hashlib.sha256(protected_payload_b64.encode("ascii")).hexdigest()
+                if actual_protected_hash != update.protected_payload_sha256:
+                    raise HTTPException(status_code=400, detail=f"Protected commitment mismatch for {update.agent_id}")
+            return decrypted_payload
+        except InvalidToken as exc:
+            raise HTTPException(status_code=400, detail=f"Unable to decrypt payload for {update.agent_id}") from exc
+
+    if not update.weights:
+        raise HTTPException(status_code=400, detail=f"Protected weights missing for {update.agent_id}")
+    if update.protected_payload_sha256:
+        actual_protected_hash = hashlib.sha256(update.weights.encode("ascii")).hexdigest()
+        if actual_protected_hash != update.protected_payload_sha256:
+            raise HTTPException(status_code=400, detail=f"Protected commitment mismatch for {update.agent_id}")
+    return base64.b64decode(update.weights)
 
 app = FastAPI(title="Secure Aggregator Service")
 
@@ -80,12 +134,22 @@ async def aggregate(request: AggregateRequest) -> AggregateResponse:
         if not request.updates:
             raise HTTPException(status_code=400, detail="No updates provided")
 
-        model_updates = [u.weights for u in request.updates]
+        model_updates = [_resolve_update_payload(u) for u in request.updates]
         sample_sizes = [max(0, int(u.sample_size)) for u in request.updates]
         if sum(sample_sizes) == 0:
             raise HTTPException(status_code=400, detail="Invalid sample sizes")
 
-        aggregated_bytes = SecureAggregator.federated_averaging(model_updates, sample_sizes)
+        if request.strategy not in {"FedAvg", "WeightedFedAvg"}:
+            raise HTTPException(status_code=400, detail=f"Unsupported aggregation strategy: {request.strategy}")
+
+        aggregation_weights = [float(size) for size in sample_sizes]
+        if request.strategy == "WeightedFedAvg":
+            aggregation_weights = [
+                float(size) * max(0.1, float(update.reliability_score))
+                for update, size in zip(request.updates, sample_sizes)
+            ]
+
+        aggregated_bytes = SecureAggregator.federated_averaging(model_updates, aggregation_weights)
         if request.noise_multiplier and request.noise_multiplier > 0:
             state = torch.load(io.BytesIO(aggregated_bytes))
             noisy = SecureAggregator.add_dp_noise(state, float(request.noise_multiplier))
@@ -98,15 +162,19 @@ async def aggregate(request: AggregateRequest) -> AggregateResponse:
         for u in request.updates:
             metric_keys.update((u.metrics or {}).keys())
 
-        total_samples = float(sum(sample_sizes))
+        total_weight = float(sum(aggregation_weights))
         for key in metric_keys:
             acc = 0.0
-            for u, n in zip(request.updates, sample_sizes):
+            for u, weight in zip(request.updates, aggregation_weights):
                 val = float((u.metrics or {}).get(key, 0.0))
-                acc += val * (n / total_samples)
+                acc += val * (weight / total_weight)
             global_metrics[key] = acc
 
-        return AggregateResponse(success=True, aggregated_weights=aggregated_bytes, global_metrics=global_metrics)
+        return AggregateResponse(
+            success=True,
+            aggregated_weights=base64.b64encode(aggregated_bytes).decode("ascii"),
+            global_metrics=global_metrics,
+        )
     except HTTPException:
         raise
     except Exception as e:

@@ -60,6 +60,11 @@ require_cmd docker
 
 cd "${ROOT_DIR}"
 
+if [[ "${IMAGE_TAG}" == "latest" ]]; then
+  echo "Warning: IMAGE_TAG=latest can reuse stale node-cached images in minikube." >&2
+  echo "Recommended local path: bash scripts/local_minikube_release.sh" >&2
+fi
+
 for service in "${SERVICES[@]}"; do
   image="${service%%|*}"
   dockerfile="${service##*|}"

@@ -7,6 +7,9 @@
 **Status:** Active Development (MVP Running)  
 **Architecture:** Microservice Architecture
 
+> [!IMPORTANT]
+> This document combines the **current MVP implementation plan** with a **target-state roadmap**. The current prototype uses REST for the federated control plane, Kafka for transaction and alert streams, PostgreSQL-backed policy/registry metadata, and local-disk model artifacts. References to SAGA, Flower, Debezium, MinIO/S3, and MLflow should be read as future-evolution options unless a status note says they are already implemented.
+
 ---
 
 ## 1. Architecture Overview
@@ -38,9 +41,9 @@ graph LR
 
 | Pattern | Use Case |
 |---------|----------|
-| **HTTP/REST** | CRUD operations, Dashboard APIs, External integrations |
-| **SAGA** | Distributed transactions (e.g., FL training rounds) |
-| **CDC** | Transaction streaming, Real-time data sync |
+| **HTTP/REST** | CRUD operations, dashboard APIs, and the current federated round control plane |
+| **SAGA** | Target-state option for richer distributed training workflows |
+| **CDC** | Transaction streaming and real-time data propagation |
 
 ### 1.3 High-Level Architecture
 
@@ -70,8 +73,8 @@ graph TB
     end
     
     %% Inter-Node Communication (Bank <-> Central)
-    LA <-->|Kafka/CDC| AC
-    LA <-->|Kafka/CDC| SA
+    LA <-->|REST| AC
+    LA -->|Protected Updates over REST| SA
     
     %% Internal synchronous communication
     AC <-->|REST| SA
@@ -82,7 +85,7 @@ graph TB
     LA -->|REST| PL
     LG <-->|REST| TG
     FD <-->|REST| LA
-    AL <-->|Kafka/CDC| TG
+    AL <-->|Kafka| TG
     
     TG --> KF
     TG --> N4
@@ -122,7 +125,7 @@ graph TB
 ```
 agentic-federated-cbdc-fraud-detection/
 │
-├── coordinator/                          # Central Coordinator Domain
+├── central-coordinator/                  # Central Coordinator Domain
 │   ├── agentic-coordinator/              # Service 1
 │   │   ├── src/
 │   │   ├── tests/
@@ -155,7 +158,7 @@ agentic-federated-cbdc-fraud-detection/
 │   │   ├── Dockerfile
 │   │   ├── pyproject.toml
 │   │   └── README.md
-│   ├── local-gnn/                        # Service 6
+│   ├── local-gnn-model/                  # Service 6
 │   │   ├── src/
 │   │   ├── tests/
 │   │   ├── Dockerfile
@@ -197,9 +200,6 @@ agentic-federated-cbdc-fraud-detection/
 │   ├── kubernetes/                       # K8s manifests
 │   └── helm/                             # Helm charts
 │
-├── saga/                                 # SAGA Orchestration
-│   └── workflows/                        # SAGA workflow definitions
-│
 ├── data/                                 # Data (not in services)
 │   ├── raw/
 │   ├── processed/
@@ -235,14 +235,14 @@ responsibilities:
   - Orchestrate federated learning rounds
   - Select participating bank nodes
   - Adaptive scheduling based on node performance
-  - SAGA orchestration for training workflows
+  - Policy-aware gating and suspicious-update screening
 communication:
   - REST → Secure Aggregator (Internal)
   - REST → Policy Manager (Internal)
-  - Kafka ↔ Local Agents (External)
+  - REST ↔ Local Agents (External)
 dependencies:
-  - Redis (state management)
-  - PostgreSQL (round history)
+  - Policy Manager
+  - Model Registry
 ```
 
 ### 4.2 Secure Aggregator (FedAvg/FedGNN)
@@ -251,23 +251,21 @@ dependencies:
 service: secure-aggregator
 domain: coordinator
 port: 8002
-protocol: REST + Kafka
+protocol: REST
 technology:
   - Python 3.11+
   - PyTorch
-  - Flower (FL framework)
+  - FastAPI
 responsibilities:
-  - Receive encrypted model updates
-  - Perform FedAvg/FedProx aggregation
-  - Apply noise for differential privacy
-  - Distribute global model
+  - Receive protected model updates
+  - Perform FedAvg aggregation
+  - Decrypt encrypted payloads when provided
+  - Return aggregated global model weights
 communication:
-  - Kafka ← Bank Node Local Agents (External)
+  - REST ← Agentic Coordinator (Internal)
   - REST → Model Registry (Internal)
-  - REST → Policy Manager (Internal)
 dependencies:
   - Model Registry
-  - Policy Manager
 ```
 
 ### 4.3 Policy Manager (Privacy + Governance)
@@ -301,7 +299,6 @@ protocol: REST
 technology:
   - Python 3.11+
   - FastAPI
-  - MLflow
 responsibilities:
   - Store model versions
   - Track model metrics
@@ -312,8 +309,7 @@ communication:
   - HTTP ← Local Agents (model pull)
 dependencies:
   - PostgreSQL (metadata)
-  - MinIO/S3 (artifact storage)
-  - MLflow
+  - Local disk artifact storage
 ```
 
 ### 4.5 Local Agent
@@ -322,7 +318,7 @@ dependencies:
 service: local-agent
 domain: bank-node
 port: 9001
-protocol: REST + Kafka
+protocol: REST
 technology:
   - Python 3.11+
   - LangGraph
@@ -332,8 +328,7 @@ responsibilities:
   - Submit model updates
   - Anomaly detection response
 communication:
-  - Kafka → Agentic Coordinator (External)
-  - Kafka → Secure Aggregator (External)
+  - REST → Agentic Coordinator (External)
   - REST → Local GNN, Privacy Layer (Internal)
 dependencies:
   - Local GNN
@@ -372,13 +367,12 @@ port: 9003
 protocol: REST
 technology:
   - Python 3.11+
-  - Opacus
-  - PySyft
   - cryptography
+  - custom privacy engine
 responsibilities:
-  - Apply differential privacy to gradients
+  - Apply differential privacy to model weights
   - Encrypt model updates
-  - Secure aggregation protocol
+  - Provide protected update transport utilities
 communication:
   - REST ← Local Agent
 dependencies:
@@ -393,24 +387,22 @@ domain: bank-node
 port: 9004
 protocols:
   - REST (queries)
-  - CDC (streaming)
+  - Kafka event publication
 technology:
   - Python 3.11+
   - FastAPI
   - Neo4j driver
-  - Debezium
 responsibilities:
   - Build transaction graphs
   - Feature engineering
-  - Real-time graph updates via CDC
+  - Real-time graph updates and event publication
 communication:
   - REST ← Local GNN
-  - CDC → Kafka (transaction events)
+  - Events → Kafka (transaction events)
   - Neo4j (graph storage)
 dependencies:
   - Neo4j
   - Kafka
-  - Debezium
 ```
 
 ### 4.9 Fraud Dashboard (Monitoring UI)
@@ -470,19 +462,19 @@ dependencies:
 | **Backend Framework** | FastAPI | REST APIs |
 | **API Style** | REST/HTTP + JSON | Synchronous inter-service communication |
 | **ML Framework** | PyTorch + PyG | GNN training |
-| **FL Framework** | Flower | Federated learning |
-| **Privacy** | Opacus, PySyft | Differential privacy |
+| **FL Framework** | Custom REST + LangGraph orchestration | Federated round control |
+| **Privacy** | Custom privacy engine + `cryptography` | Differential privacy and encrypted payload transport |
 | **Agentic AI** | LangGraph | Agent orchestration |
 | **Message Queue** | Apache Kafka | Event streaming |
-| **CDC** | Debezium | Change data capture |
+| **CDC** | Service-level event publication | Lightweight data propagation |
 | **Graph Database** | Neo4j | Transaction graphs |
 | **Relational DB** | PostgreSQL | Metadata storage |
-| **Cache** | Redis | State management |
-| **Object Storage** | MinIO/S3 | Model artifacts |
+| **Cache** | In-memory service state | Round coordination state in MVP |
+| **Object Storage** | Local disk artifacts | Model artifacts |
 | **Frontend** | React.js | Dashboard UI |
 | **Container** | Docker | Service packaging |
 | **Orchestration** | Kubernetes | Deployment |
-| **ML Ops** | MLflow | Model registry |
+| **ML Ops** | Registry service + PostgreSQL | Model version tracking |
 
 ---
 
@@ -497,7 +489,7 @@ dependencies:
 | Implement Data Preparation pipeline (Elliptic++) | High | 2 |
 | Set up shared REST contracts/schemas | Critical | 2 |
 | Docker Compose for local dev | High | 2 |
-| CI/CD pipeline (GitHub Actions) | High | 2 |
+| Local deployment workflow hardening | High | 2 |
 
 ### Phase 2: Core Coordinator Services (Week 3-6)
 
@@ -507,7 +499,7 @@ dependencies:
 | Model Registry | Critical | 5 |
 | Secure Aggregator | Critical | 8 |
 | Agentic Coordinator | Critical | 10 |
-| SAGA workflow implementation | High | 5 |
+| SAGA workflow implementation (target-state extension) | High | 5 |
 
 ### Phase 3: Bank Node Core Services (Week 7-10)
 
@@ -545,9 +537,9 @@ dependencies:
 
 ---
 
-## 7. SAGA Workflow Example
+## 7. Target-State SAGA Workflow Example
 
-### Federated Learning Round SAGA
+### Federated Learning Round SAGA (Future Extension)
 
 ```mermaid
 sequenceDiagram
@@ -580,7 +572,7 @@ sequenceDiagram
 
 | Milestone | Week | Deliverables |
 |-----------|------|--------------|
-| **M1: Infrastructure** | 2 | Docker Compose, CI/CD, folder structure |
+| **M1: Infrastructure** | 2 | Docker Compose, local deployment workflow, folder structure |
 | **M2: Coordinator MVP** | 6 | 4 coordinator services running |
 | **M3: Bank Node MVP** | 10 | 4 core bank node services |
 | **M4: Full System** | 13 | All 10 services integrated |
@@ -590,11 +582,10 @@ sequenceDiagram
 
 ## 9. Next Steps
 
-1. [ ] Add automated end-to-end smoke coverage for the validated minikube workflow
-2. [ ] Expand transaction-graph feature engineering beyond basic account statistics
-3. [ ] Add local-gnn inference support
-4. [ ] Strengthen alerting notifications beyond optional SMTP
-5. [ ] Add CI/CD for build, verification, and deployment automation
+1. [ ] Add deeper temporal and centrality-based graph features where they materially improve model inputs
+2. [ ] Complete CDC pipeline setup where it materially improves real-time propagation beyond the current local demo/replay workflow
+3. [ ] Add performance benchmarking and privacy/security audit follow-through for the locally validated MVP
+4. [ ] Keep CI/CD deferred unless local-first delivery needs change or AWS deployment becomes active
 
 ---
 

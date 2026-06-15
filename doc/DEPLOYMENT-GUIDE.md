@@ -39,15 +39,9 @@ Before deploying, you must build the images for each microservice. **You MUST ru
 
 The build context is set to `.` (the current directory) so that the `shared/` folder can be included in the images. We use the `-f` flag to point to the specific `Dockerfile` for each service.
 
-Use one shared image tag during a build/deploy cycle so the app-layer names stay aligned across Docker, Helm, and Kubernetes.
+Use one shared image tag during a build/deploy cycle so the app-layer names stay aligned across Docker, Helm, and Kubernetes. For local minikube work, prefer a fresh unique tag for each release instead of `latest`.
 
-For the current validated local workflow, `latest` is the simplest choice:
-
-```bash
-export IMAGE_TAG=latest
-```
-
-Recommended helper:
+Recommended build helper when you want to build explicitly:
 
 ```bash
 bash scripts/build_all_images.sh --tag "${IMAGE_TAG}"
@@ -131,11 +125,23 @@ What this script does:
 Recommended end-to-end local sequence:
 
 ```bash
-export IMAGE_TAG=latest
 minikube start -p minikube --driver=docker --container-runtime=containerd --cpus=4 --memory=8192 --disk-size=40g
 kubectl config use-context minikube
-bash scripts/build_all_images.sh --tag "${IMAGE_TAG}"
-bash scripts/deploy_minikube.sh --tag "${IMAGE_TAG}" --profile minikube
+bash scripts/local_minikube_release.sh --profile minikube
+```
+
+What `scripts/local_minikube_release.sh` does:
+
+1. generates a unique local image tag such as `local-20260615-221530`
+2. builds all service images with that tag
+3. loads those exact images into `minikube`
+4. applies `helm upgrade --install` with the same tag
+5. records the deployed local release in `.local-state/minikube-release.env`
+
+If you want to choose the tag yourself:
+
+```bash
+bash scripts/local_minikube_release.sh --tag local-manual-001 --profile minikube
 ```
 
 Optional flags:
@@ -147,6 +153,10 @@ bash scripts/deploy_minikube.sh --tag "${IMAGE_TAG}" --skip-helm
 # Skip image loading and only apply Helm
 bash scripts/deploy_minikube.sh --tag "${IMAGE_TAG}" --skip-load
 ```
+
+Important note:
+
+- avoid `IMAGE_TAG=latest` for normal minikube validation, because `IfNotPresent` plus cached node images can leave pods running older app code even after a local rebuild
 
 ### Step 3: Alternative Local Path (Docker Desktop)
 If you still want to use the local `docker-desktop` cluster, use the repo helper script. It makes the local-image workflow repeatable by:
@@ -286,6 +296,51 @@ The dashboard now routes:
 - `GET /api/alerting/*`
 - `GET /ws/alerts`
 - `GET /kafka-ui/`
+
+If the dashboard is healthy but the analytics and alerts panels are empty, bootstrap repeatable demo data with:
+
+```bash
+bash scripts/bootstrap_dashboard_demo_data.sh
+```
+
+For a full repeatable demo lifecycle, use:
+
+```bash
+bash scripts/demo_dashboard_lifecycle.sh full
+```
+
+Lifecycle modes:
+- `reset` clears Neo4j graph data and restarts `alerting` so recent alerts are empty again
+- `seed` loads the demo graph edges and publishes the demo fraud alerts
+- `verify` checks dashboard proxy responses against expected counts
+- `full` runs `reset -> seed -> verify`
+
+To prove a deployment automatically in CI or from a local runner:
+
+```bash
+bash scripts/ci_dashboard_smoke.sh
+```
+
+Useful smoke-test options:
+- `--skip-build` reuses existing local images for the selected `IMAGE_TAG`
+- `--skip-deploy` reuses the currently running cluster and only executes the smoke lifecycle
+- `--skip-minikube-start` fails fast instead of starting `minikube` automatically
+
+The repository also includes a GitHub Actions workflow at `.github/workflows/dashboard-smoke.yml` that runs the same smoke script on `workflow_dispatch` or `workflow_call`.
+
+Useful environment overrides:
+- `GRAPH_LIMIT=40` controls how many processed edges are loaded into `transaction-graph`
+- `GRAPH_PORT=49004` changes the temporary local port-forward used for `transaction-graph`
+- `DASHBOARD_PORT=43000` changes the temporary local port-forward used for dashboard verification
+- `VERIFY_DASHBOARD=false` skips the final dashboard proxy checks and only seeds graph and alert data
+
+The helper performs these actions:
+- starts temporary port-forwards to `transaction-graph` and `fraud-dashboard`
+- ensures the Kafka topic `fraud.alerts` exists
+- loads processed transaction rows through `POST /transactions`
+- publishes five demo fraud alerts through the in-cluster `alerting` runtime
+- verifies `/api/transaction-graph/accounts` and `/api/alerting/alerts/recent` return non-empty payloads
+- safely supports reruns by reusing transaction IDs and alert IDs without inflating the dashboard counts
 
 For Docker Desktop, also verify:
 

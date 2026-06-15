@@ -4,17 +4,16 @@ import json
 import sys
 import asyncio
 from datetime import datetime, timezone
-from email.mime.text import MIMEText
-import smtplib
 from typing import Any, Dict, List, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from confluent_kafka import Consumer, KafkaError
 import threading
 
+from src.notifications import dispatch_notifications, get_notification_channels
+
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-from shared.schemas.models import FraudAlert
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,26 +30,13 @@ event_loop: asyncio.AbstractEventLoop | None = None
 async def health_check():
     return {"status": "healthy"}
 
-def _send_email(subject: str, body: str):
-    host = os.getenv("SMTP_HOST")
-    to_addr = os.getenv("ALERT_EMAIL_TO")
-    if not host or not to_addr:
-        return
-    port = int(os.getenv("SMTP_PORT", "587"))
-    user = os.getenv("SMTP_USER")
-    password = os.getenv("SMTP_PASSWORD")
-    from_addr = os.getenv("ALERT_EMAIL_FROM") or user or "alerts@local"
-
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = to_addr
-
-    with smtplib.SMTP(host, port, timeout=10) as server:
-        server.starttls()
-        if user and password:
-            server.login(user, password)
-        server.sendmail(from_addr, [to_addr], msg.as_string())
+def _store_recent_alert(payload: Dict[str, Any]):
+    alert_id = payload.get("alert_id")
+    if alert_id:
+        recent_alerts[:] = [item for item in recent_alerts if item.get("alert_id") != alert_id]
+    recent_alerts.append(payload)
+    if len(recent_alerts) > recent_alerts_max:
+        del recent_alerts[: len(recent_alerts) - recent_alerts_max]
 
 def consume_fraud_events(loop: asyncio.AbstractEventLoop):
     """
@@ -78,23 +64,16 @@ def consume_fraud_events(loop: asyncio.AbstractEventLoop):
                     continue
                 else:
                     logger.error(f"Kafka error: {msg.error()}")
-                    break
+                    continue
             
             # Process fraud alert
             try:
                 alert_data = json.loads(msg.value().decode('utf-8'))
                 payload = dict(alert_data)
                 payload["received_at"] = datetime.now(timezone.utc).isoformat()
-                recent_alerts.append(payload)
-                if len(recent_alerts) > recent_alerts_max:
-                    del recent_alerts[: len(recent_alerts) - recent_alerts_max]
-
-                subject = f"Fraud Alert: {payload.get('alert_id', 'unknown')}"
-                body = json.dumps(payload, indent=2)
-                try:
-                    _send_email(subject, body)
-                except Exception as e:
-                    logger.error(f"Email send failed: {e}")
+                payload["notification_results"] = dispatch_notifications(payload)
+                payload["notifications_attempted_at"] = datetime.now(timezone.utc).isoformat()
+                _store_recent_alert(payload)
 
                 asyncio.run_coroutine_threadsafe(alert_queue.put(payload), loop)
                 logger.info(f"CRITICAL: Fraud detected! Alert ID: {payload.get('alert_id')}")
@@ -108,6 +87,16 @@ def consume_fraud_events(loop: asyncio.AbstractEventLoop):
 async def get_recent_alerts(limit: int = 50):
     limit = max(1, min(int(limit), recent_alerts_max))
     return list(reversed(recent_alerts[-limit:]))
+
+
+@app.get("/alerts/channels")
+async def get_alert_channels():
+    channels = get_notification_channels()
+    configured_count = sum(1 for channel in channels if channel.get("configured"))
+    return {
+        "configured_channel_count": configured_count,
+        "channels": channels,
+    }
 
 @app.websocket("/ws/alerts")
 async def ws_alerts(websocket: WebSocket):

@@ -13,19 +13,6 @@ EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-minikube}"
 SKIP_LOAD=false
 SKIP_HELM=false
 
-IMAGES=(
-  "dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}"
-  "dusman/federated-fraud-secure-aggregator:${IMAGE_TAG}"
-  "dusman/federated-fraud-policy-manager:${IMAGE_TAG}"
-  "dusman/federated-fraud-model-registry:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-agent:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-gnn:${IMAGE_TAG}"
-  "dusman/federated-fraud-privacy-layer:${IMAGE_TAG}"
-  "dusman/federated-fraud-transaction-graph:${IMAGE_TAG}"
-  "dusman/federated-fraud-alerting:${IMAGE_TAG}"
-  "dusman/federated-fraud-fraud-dashboard:${IMAGE_TAG}"
-)
-
 APP_DEPLOYMENTS=(
   "agentic-coordinator"
   "secure-aggregator"
@@ -155,6 +142,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+IMAGES=(
+  "dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}"
+  "dusman/federated-fraud-secure-aggregator:${IMAGE_TAG}"
+  "dusman/federated-fraud-policy-manager:${IMAGE_TAG}"
+  "dusman/federated-fraud-model-registry:${IMAGE_TAG}"
+  "dusman/federated-fraud-local-agent:${IMAGE_TAG}"
+  "dusman/federated-fraud-local-gnn:${IMAGE_TAG}"
+  "dusman/federated-fraud-privacy-layer:${IMAGE_TAG}"
+  "dusman/federated-fraud-transaction-graph:${IMAGE_TAG}"
+  "dusman/federated-fraud-alerting:${IMAGE_TAG}"
+  "dusman/federated-fraud-fraud-dashboard:${IMAGE_TAG}"
+)
+
 require_cmd docker
 require_cmd kubectl
 require_cmd helm
@@ -164,7 +164,7 @@ MINIKUBE_DIR="${HOME}/.minikube"
 MINIKUBE_PROFILE_DIR="${MINIKUBE_DIR}/profiles/${MINIKUBE_PROFILE}"
 
 if [[ -d "${MINIKUBE_PROFILE_DIR}" ]]; then
-  if ! (touch "${MINIKUBE_PROFILE_DIR}/.write_test" >/dev/null 2>&1 && rm -f "${MINIKUBE_PROFILE_DIR}/.write_test" >/dev/null 2>&1); then
+  if [[ ! -w "${MINIKUBE_PROFILE_DIR}" ]]; then
     echo "Minikube profile directory is not writable: ${MINIKUBE_PROFILE_DIR}" >&2
     echo "Fix ownership/permissions, then retry:" >&2
     echo "  sudo chown -R \"$(whoami)\" \"${MINIKUBE_DIR}\"" >&2
@@ -172,7 +172,15 @@ if [[ -d "${MINIKUBE_PROFILE_DIR}" ]]; then
     exit 1
   fi
 else
-  if ! (mkdir -p "${MINIKUBE_DIR}" >/dev/null 2>&1 && touch "${MINIKUBE_DIR}/.write_test" >/dev/null 2>&1 && rm -f "${MINIKUBE_DIR}/.write_test" >/dev/null 2>&1); then
+  if [[ ! -d "${MINIKUBE_DIR}" ]] && ! mkdir -p "${MINIKUBE_DIR}" >/dev/null 2>&1; then
+    echo "Minikube directory is not writable: ${MINIKUBE_DIR}" >&2
+    echo "Fix ownership/permissions, then retry:" >&2
+    echo "  sudo chown -R \"$(whoami)\" \"${MINIKUBE_DIR}\"" >&2
+    echo "  chmod -R u+rwX \"${MINIKUBE_DIR}\"" >&2
+    exit 1
+  fi
+
+  if [[ ! -w "${MINIKUBE_DIR}" ]]; then
     echo "Minikube directory is not writable: ${MINIKUBE_DIR}" >&2
     echo "Fix ownership/permissions, then retry:" >&2
     echo "  sudo chown -R \"$(whoami)\" \"${MINIKUBE_DIR}\"" >&2
@@ -184,6 +192,11 @@ fi
 check_context
 check_minikube
 check_images
+
+if [[ "${IMAGE_TAG}" == "latest" ]]; then
+  echo "Warning: deploying tag 'latest' can leave minikube on stale cached app images." >&2
+  echo "Recommended local path: bash scripts/local_minikube_release.sh" >&2
+fi
 
 if [[ "${SKIP_LOAD}" != "true" ]]; then
   load_images

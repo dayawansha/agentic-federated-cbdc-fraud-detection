@@ -219,11 +219,13 @@ function App() {
   );
 
   const [agentStatus, setAgentStatus] = useState(null);
+  const [inferenceSnapshot, setInferenceSnapshot] = useState({ prediction_count: 0, predictions: [] });
   const [alerts, setAlerts] = useState([]);
   const [accountsSnapshot, setAccountsSnapshot] = useState({ count: null, accounts: [] });
   const [serviceHealth, setServiceHealth] = useState({});
   const [fetchState, setFetchState] = useState({
     alertsLoaded: false,
+    inferenceLoaded: false,
     statusLoaded: false,
     graphLoaded: false,
     websocketConnected: false,
@@ -257,6 +259,29 @@ function App() {
       } catch (error) {
         if (!cancelled) {
           setFetchState((prev) => ({ ...prev, statusLoaded: true }));
+        }
+      }
+
+      try {
+        const inferenceResponse = await fetch(
+          useProxy === false
+            ? `${localAgentDirectUrl}/agent/inference?limit=5`
+            : `${proxyApiBase}/local-agent/agent/inference?limit=5`
+        );
+        if (inferenceResponse.ok) {
+          const payload = await inferenceResponse.json();
+          if (!cancelled) {
+            setInferenceSnapshot({
+              prediction_count: payload?.prediction_count ?? 0,
+              predictions: Array.isArray(payload?.predictions) ? payload.predictions : [],
+              generated_at: payload?.generated_at || null,
+            });
+            setFetchState((prev) => ({ ...prev, inferenceLoaded: true }));
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFetchState((prev) => ({ ...prev, inferenceLoaded: true }));
         }
       }
 
@@ -384,6 +409,12 @@ function App() {
         ? alerts.reduce((sum, alert) => sum + Number(alert.confidence_score || 0), 0) / alerts.length
         : null;
 
+    const highRiskPredictions = (inferenceSnapshot.predictions || []).filter(
+      (prediction) => String(prediction.predicted_class || '').toLowerCase() === 'illicit'
+    );
+
+    const topInferenceConfidence = highRiskPredictions.length > 0 ? highRiskPredictions[0].confidence : null;
+
     const criticalOrHigh = alerts.filter((alert) => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase())).length;
 
     const topActiveAccounts = accountsSnapshot.accounts
@@ -402,9 +433,11 @@ function App() {
       alertTimeline,
       avgConfidence,
       criticalOrHigh,
+      highRiskPredictions,
       topActiveAccounts,
+      topInferenceConfidence,
     };
-  }, [accountsSnapshot.accounts, alerts]);
+  }, [accountsSnapshot.accounts, alerts, inferenceSnapshot.predictions]);
 
   const modelAccuracy = agentStatus?.last_metrics?.accuracy;
   const modelLoss = agentStatus?.last_metrics?.loss;
@@ -464,6 +497,15 @@ function App() {
             value={typeof analytics.avgConfidence === 'number' ? `${(analytics.avgConfidence * 100).toFixed(1)}%` : 'N/A'}
             subtitle="Calculated from recent alert payloads"
           />
+          <StatCard
+            title="High-Risk Predictions"
+            value={analytics.highRiskPredictions.length}
+            subtitle={
+              typeof analytics.topInferenceConfidence === 'number'
+                ? `Top confidence ${(analytics.topInferenceConfidence * 100).toFixed(1)}%`
+                : 'Awaiting inference snapshot'
+            }
+          />
         </div>
 
         <div
@@ -485,7 +527,8 @@ function App() {
                   <div><strong>Last Round:</strong> {agentStatus?.last_round_id || 'N/A'}</div>
                   <div><strong>Last Update:</strong> {formatTimestamp(agentStatus?.last_update_at)}</div>
                   <div><strong>Update Age:</strong> {formatRelativeTime(agentStatus?.last_update_at)}</div>
-                  <div><strong>Data Feeds:</strong> {fetchState.statusLoaded && fetchState.alertsLoaded && fetchState.graphLoaded ? 'Loaded' : 'Refreshing...'}</div>
+                  <div><strong>Last Inference:</strong> {formatTimestamp(agentStatus?.last_inference_at)}</div>
+                  <div><strong>Data Feeds:</strong> {fetchState.statusLoaded && fetchState.alertsLoaded && fetchState.graphLoaded && fetchState.inferenceLoaded ? 'Loaded' : 'Refreshing...'}</div>
                 </div>
               </div>
               <div>
@@ -643,33 +686,82 @@ function App() {
             )}
           </SectionCard>
 
-          <SectionCard title="Training Metrics" subtitle="Latest metrics reported by the Local Agent after a training round.">
-            <div style={{ display: 'grid', gap: 12 }}>
-              {agentStatus?.last_metrics && Object.keys(agentStatus.last_metrics).length > 0 ? (
-                Object.entries(agentStatus.last_metrics).map(([key, value]) => (
-                  <div
-                    key={key}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      border: `1px solid ${COLORS.border}`,
-                      borderRadius: 10,
-                      padding: '12px 14px',
-                      background: '#f9fafb',
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                    <span style={{ fontFamily: 'monospace', color: COLORS.subtext }}>
-                      {typeof value === 'number' ? value.toFixed(4) : String(value)}
-                    </span>
-                  </div>
-                ))
+          <div style={{ display: 'grid', gap: 16 }}>
+            <SectionCard title="Training Metrics" subtitle="Latest metrics reported by the Local Agent after a training round.">
+              <div style={{ display: 'grid', gap: 12 }}>
+                {agentStatus?.last_metrics && Object.keys(agentStatus.last_metrics).length > 0 ? (
+                  Object.entries(agentStatus.last_metrics).map(([key, value]) => (
+                    <div
+                      key={key}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        background: '#f9fafb',
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                      <span style={{ fontFamily: 'monospace', color: COLORS.subtext }}>
+                        {typeof value === 'number' ? value.toFixed(4) : String(value)}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState text="Training metrics have not been reported yet." />
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Inference Watchlist"
+              subtitle="Top ranked Local GNN fraud predictions routed through the Local Agent."
+            >
+              {inferenceSnapshot.predictions.length === 0 ? (
+                <EmptyState text="No inference predictions available yet." />
               ) : (
-                <EmptyState text="Training metrics have not been reported yet." />
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {inferenceSnapshot.predictions.map((prediction) => (
+                    <div
+                      key={prediction.tx_id}
+                      style={{
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        background: '#f9fafb',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                        <strong style={{ fontFamily: 'monospace' }}>tx {prediction.tx_id}</strong>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            borderRadius: 999,
+                            padding: '4px 8px',
+                            background:
+                              String(prediction.predicted_class).toLowerCase() === 'illicit' ? '#fee2e2' : '#dbeafe',
+                            color:
+                              String(prediction.predicted_class).toLowerCase() === 'illicit' ? '#991b1b' : '#1d4ed8',
+                            fontWeight: 700,
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {prediction.predicted_class}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gap: 4, color: COLORS.subtext, fontSize: 13 }}>
+                        <div><strong>Confidence:</strong> {(Number(prediction.confidence || 0) * 100).toFixed(2)}%</div>
+                        <div><strong>Illicit Probability:</strong> {(Number(prediction.illicit_probability || 0) * 100).toFixed(2)}%</div>
+                        <div><strong>Known Label:</strong> {prediction.known_label || 'unknown'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          </div>
         </div>
 
         <SectionCard title="Recent Alerts Feed" subtitle="Live alert stream from the Alerting service, enriched with timestamps and confidence.">

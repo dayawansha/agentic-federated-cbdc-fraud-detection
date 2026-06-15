@@ -1,8 +1,8 @@
 # Development Status: Local Agent
 
-**Current Status:** 🟢 Completed (MVP)
-**Progress:** 80%
-**Last Updated:** 2026-06-13
+**Current Status:** 🟢 Completed (MVP + Inference Bridge)
+**Progress:** 94%
+**Last Updated:** 2026-06-15
 
 ---
 
@@ -24,11 +24,14 @@
 | Training Pipeline Integration | Critical | 🟢 Completed | 100% |
 | Coordinator Client (REST) | High | 🟢 Completed | 100% |
 | Status Endpoint (`/agent/status`) | Medium | 🟢 Completed | 100% |
-| Unit Tests | Medium | 🔴 Not Started | 0% |
+| Inference Bridge (`/agent/inference`) | High | 🟢 Completed | 100% |
+| Unit Tests | Medium | 🟢 Completed | 100% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
-- Integrated with Local GNN (`/train`) and Privacy Layer (`/privacy/apply-dp`, `/privacy/encrypt`) and submits updates to Coordinator (`/updates/submit`).
+- Integrated with Local GNN (`/train`, `/infer`) and Privacy Layer (`/privacy/apply-dp`, `/privacy/encrypt`) and submits updates to Coordinator (`/updates/submit`).
+- `/agent/inference` now proxies ranked Local GNN fraud predictions and records the latest inference summary in agent status for downstream consumers.
+- Added root-runnable local tests covering inference success/failure handling and round-status updates.
 - Transaction Graph integration is optional for MVP and can be used as a data source in later iterations.

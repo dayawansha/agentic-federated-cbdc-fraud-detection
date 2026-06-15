@@ -1,0 +1,56 @@
+name: Dashboard Smoke Test
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  dashboard-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          curl -fsSL -o kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
+      - name: Install Helm
+        run: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Install minikube
+        run: |
+          curl -fsSL -o minikube-linux-amd64 https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          rm -f minikube-linux-amd64
+
+      - name: Verify Docker
+        run: |
+          docker version
+          docker info
+
+      - name: Run Dashboard Smoke Test
+        env:
+          IMAGE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          MINIKUBE_PROFILE: minikube
+          EXPECTED_CONTEXT: minikube
+          MINIKUBE_DRIVER: docker
+          MINIKUBE_CPUS: "3"
+          MINIKUBE_MEMORY: "6144"
+          MINIKUBE_DISK_SIZE: "30g"
+          GRAPH_LIMIT: "40"
+          EXPECTED_ACCOUNTS_COUNT: "10"
+          EXPECTED_ALERT_COUNT: "5"
+        run: |
+          chmod +x scripts/ci_dashboard_smoke.sh
+          bash scripts/ci_dashboard_smoke.sh
+
+      - name: Dump Cluster State On Failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -n 300 || true

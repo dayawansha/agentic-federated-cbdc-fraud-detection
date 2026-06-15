@@ -21,4 +21,4 @@ COPY shared/ /app/shared/
 
 EXPOSE 9003
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "9003"]
+CMD ["python", "-m", "src.main"]

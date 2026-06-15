@@ -52,6 +52,32 @@ spec:
               value: {{ $.Values.global.redis.host | quote }}
             - name: REDIS_PORT
               value: {{ printf "%d" (int $.Values.global.redis.port) | quote }}
+{{- if eq $name "agenticCoordinator" }}
+            - name: LOCAL_AGENT_URLS
+              value: "http://local-agent:9001"
+            - name: SECURE_AGGREGATOR_URL
+              value: "http://secure-aggregator:8002"
+            - name: POLICY_MANAGER_URL
+              value: "http://policy-manager:8003"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry:8004"
+{{- end }}
+{{- if or (eq $name "secureAggregator") (eq $name "privacyLayer") }}
+            - name: PRIVACY_KEY_SEED
+              value: "federated-fraud-shared-transport-key"
+{{- end }}
+{{- if eq $name "localAgent" }}
+            - name: AGENT_ID
+              value: "local-agent"
+            - name: LOCAL_GNN_URL
+              value: "http://local-gnn:9002"
+            - name: PRIVACY_LAYER_URL
+              value: "http://privacy-layer:9003"
+            - name: COORDINATOR_URL
+              value: "http://agentic-coordinator:8001"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry:8004"
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

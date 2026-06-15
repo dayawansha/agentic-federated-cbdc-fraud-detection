@@ -1,0 +1,28 @@
+.git
+.github
+.idea
+.dbg
+.local-state
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+**/*.pyc
+**/*.pyo
+**/.DS_Store
+benchmarks/
+doc/
+notebooks/
+saga/
+tests/
+debug-dashboard-data-path.md
+
+# Only keep the specific training artifacts copied by the Local GNN image.
+train-data/**
+!train-data/processed/
+!train-data/processed/txs_shard_1.csv
+!train-data/processed/txs_edges_processed.csv
+!train-data/EllipticPlusPlus-main/
+!train-data/EllipticPlusPlus-main/Transactions Dataset/
+!train-data/EllipticPlusPlus-main/Transactions Dataset/txs_classes.csv

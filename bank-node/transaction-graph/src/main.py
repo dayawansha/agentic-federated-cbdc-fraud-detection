@@ -66,37 +66,7 @@ async def get_all_accounts(limit: int = 100):
 @app.get("/accounts/{account_id}/features")
 async def get_account_features(account_id: str):
     try:
-        with db.get_session() as session:
-            sent = session.run(
-                "MATCH (a:Account {id: $id})-[:SENDS]->(t:Transaction) RETURN count(t) as c, coalesce(sum(t.amount), 0) as s",
-                id=account_id,
-            ).single()
-            received = session.run(
-                "MATCH (a:Account {id: $id})<-[:RECEIVES]-(t:Transaction) RETURN count(t) as c, coalesce(sum(t.amount), 0) as s",
-                id=account_id,
-            ).single()
-            neighbors = session.run(
-                "MATCH (a:Account {id: $id})-[:SENDS|RECEIVES*1..2]-(b:Account) RETURN count(DISTINCT b) as c",
-                id=account_id,
-            ).single()
-
-        sent_count = int(sent["c"]) if sent else 0
-        recv_count = int(received["c"]) if received else 0
-        sent_sum = float(sent["s"]) if sent else 0.0
-        recv_sum = float(received["s"]) if received else 0.0
-        neighbor_count = int(neighbors["c"]) if neighbors else 0
-
-        total_count = sent_count + recv_count
-        avg_amount = (sent_sum + recv_sum) / total_count if total_count else 0.0
-        return {
-            "account_id": account_id,
-            "sent_count": sent_count,
-            "received_count": recv_count,
-            "sent_amount_sum": sent_sum,
-            "received_amount_sum": recv_sum,
-            "counterparty_diversity": neighbor_count,
-            "avg_amount": avg_amount,
-        }
+        return graph_service.get_account_features(account_id)
     except Exception as e:
         logger.error(f"Error in get_account_features: {e}")
         raise HTTPException(status_code=500, detail=str(e))
