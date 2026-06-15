@@ -1,8 +1,8 @@
-# Service Development Status: Agentic Coordinator
+# Development Status: Agentic Coordinator
 
 **Current Status:** 🟢 Completed (MVP)
 **Progress:** 85%
-**Last Updated:** 2026-06-12
+**Last Updated:** 2026-06-13
 
 ---
 
@@ -10,7 +10,7 @@
 - **Service Name:** agentic-coordinator
 - **Domain:** coordinator
 - **Port:** 8001
-- **Protocol:** REST (gRPC proto available)
+- **Protocol:** REST + Kafka
 
 ---
 
@@ -19,7 +19,7 @@
 | Task | Priority | Status | Progress |
 |------|----------|--------|----------|
 | Folder Structure | High | 🟢 Completed | 100% |
-| API Definitions (Proto) | High | 🟢 Completed | 100% |
+| REST Contract Definitions | High | 🟢 Completed | 100% |
 | Business Logic (Round Orchestration) | Critical | 🟢 Completed | 100% |
 | LangGraph Integration | Critical | 🟢 Completed | 100% |
 | Secure Aggregator Integration | Critical | 🟢 Completed | 100% |

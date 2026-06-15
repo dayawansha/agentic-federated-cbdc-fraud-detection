@@ -1,4 +1,4 @@
-# Service Development Status: Fraud Dashboard
+# Development Status: Fraud Dashboard
 
 **Current Status:** 🟡 In Progress
 **Progress:** 60%

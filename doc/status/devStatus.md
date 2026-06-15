@@ -1,7 +1,7 @@
 # Development Status
 ## Agentic Federated Learning Framework for CBDC Fraud Detection
 
-**Last Updated:** June 12, 2026  
+**Last Updated:** June 13, 2026  
 **Current Phase:** MVP Complete (End-to-End Round Flow Running)  
 **Overall Progress:** 85%
 
@@ -17,7 +17,7 @@
 | **Target Completion** | September 2026 |
 | **Total Services** | 10 microservices |
 | **Architecture** | Microservice (Domain-Driven) |
-| **Communication** | Intra: gRPC, Inter: Kafka/CDC |
+| **Communication** | Sync: REST, Async: Kafka/CDC |
 
 ### Project Achievements
 
@@ -82,7 +82,7 @@ Unit Tests:             1 / 10 (partial)
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Folder Structure | 🟢 Completed | Full microservice structure initialized |
-| Shared Proto/Schemas | 🟢 Completed | gRPC protos and Pydantic schemas ready |
+| Shared Contracts/Schemas | 🟢 Completed | REST/OpenAPI contracts and Pydantic schemas ready |
 | Docker Compose | 🟢 Completed | Local multi-service environment ready |
 | CI/CD Pipeline | 🔴 Not Started | - |
 | Kubernetes Manifests | 🟡 In Progress | Helm chart present; service-level maturity still evolving |
@@ -95,25 +95,25 @@ Unit Tests:             1 / 10 (partial)
 - [x] Set up development environment
 - [x] Create microservice folder structure
 - [x] Implement Data Preparation pipeline (Elliptic++)
-- [x] Set up shared proto/schemas
+- [x] Set up shared REST contracts/schemas
 - [x] Docker Compose for local dev
 - [ ] CI/CD pipeline (GitHub Actions)
 
 ### Phase 2: Core Coordinator Services (Week 3-6)
-- [x] Policy Manager service (REST + PostgreSQL budgets)
-- [x] Model Registry service (REST + PostgreSQL versions)
-- [x] Secure Aggregator service (FedAvg via REST)
-- [x] Agentic Coordinator service (LangGraph-based orchestration + integrations)
+- [x] Policy Manager (REST + PostgreSQL budgets)
+- [x] Model Registry (REST + PostgreSQL versions)
+- [x] Secure Aggregator (FedAvg via REST)
+- [x] Agentic Coordinator (LangGraph-based orchestration + integrations)
 - [x] Round workflow (MVP)
 
 ### Phase 3: Bank Node Core Services (Week 7-10)
-- [🟡] Transaction Graph service (Neo4j + Kafka)
-- [x] Local GNN service (training on processed shard + weights output)
-- [x] Privacy Layer service (DP + encrypt/decrypt)
-- [x] Local Agent service (training + privacy + coordinator submission)
+- [🟡] Transaction Graph (Neo4j + Kafka)
+- [x] Local GNN (training on processed shard + weights output)
+- [x] Privacy Layer (DP + encrypt/decrypt)
+- [x] Local Agent (training + privacy + coordinator submission)
 
 ### Phase 4: Supporting Services (Week 11-13)
-- [🟡] Alerting service (Kafka + WS + recent alerts)
+- [🟡] Alerting (Kafka + WS + recent alerts)
 - [🟡] Fraud Dashboard (polling + WS)
 - [ ] CDC pipeline setup
 
@@ -155,4 +155,4 @@ Unit Tests:             1 / 10 (partial)
 
 ---
 
-*Last Updated: June 12, 2026*
+*Last Updated: June 13, 2026*

@@ -1,8 +1,8 @@
-# Service Development Status: Privacy Layer
+# Development Status: Privacy Layer
 
 **Current Status:** 🟢 Completed (MVP)
 **Progress:** 80%
-**Last Updated:** 2026-06-12
+**Last Updated:** 2026-06-13
 
 ---
 
@@ -10,7 +10,7 @@
 - **Service Name:** privacy-layer
 - **Domain:** bank-node
 - **Port:** 9003
-- **Protocol:** REST (gRPC proto available)
+- **Protocol:** REST
 
 ---
 

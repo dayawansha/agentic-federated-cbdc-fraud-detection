@@ -17,7 +17,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
         "numpy>=1.24.0" \
-        "grpcio>=1.56.0" \
         "fastapi>=0.100.0" \
         "uvicorn>=0.23.0" \
         "pydantic>=2.0.0" \

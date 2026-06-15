@@ -1,4 +1,4 @@
-# Service Development Status: Model Registry
+# Development Status: Model Registry
 
 **Current Status:** 🟢 Completed (MVP)
 **Progress:** 75%

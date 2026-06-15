@@ -30,7 +30,8 @@ class GraphService:
                 timestamp=tx_data.get('timestamp', datetime.now().isoformat()),
                 asset_type=tx_data.get('asset_type', 'CBDC')
             )
-            return result.single()
+            record = result.single()
+            return record[0] if record else tx_data['transaction_id']
 
     @staticmethod
     def get_subgraph(center_node_id: str, depth: int = 1):
@@ -79,5 +80,33 @@ class GraphService:
                         relationships.append(rel_data)
                         
             return {"nodes": nodes, "relationships": relationships}
+
+    @staticmethod
+    def get_all_accounts(limit: int = 1000):
+        """
+        Retrieves account nodes with lightweight summary counts for UI/API browsing.
+        """
+        query = (
+            "MATCH (a:Account) "
+            "OPTIONAL MATCH (a)-[:SENDS]->(sent:Transaction) "
+            "WITH a, count(sent) AS sent_count "
+            "OPTIONAL MATCH (a)<-[:RECEIVES]-(received:Transaction) "
+            "RETURN a.id AS account_id, sent_count, count(received) AS received_count "
+            "ORDER BY account_id "
+            "LIMIT $limit"
+        )
+
+        with db.get_session() as session:
+            result = session.run(query, limit=max(1, int(limit)))
+            accounts = []
+            for record in result:
+                accounts.append(
+                    {
+                        "account_id": record["account_id"],
+                        "sent_count": int(record["sent_count"]),
+                        "received_count": int(record["received_count"]),
+                    }
+                )
+            return accounts
 
 graph_service = GraphService()

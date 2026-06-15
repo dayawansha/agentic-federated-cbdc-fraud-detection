@@ -1,6 +1,6 @@
 # API Documentation: Agentic Federated Learning Framework
 
-This document outlines the primary API endpoints and gRPC services for the Federated CBDC Fraud Detection system.
+This document outlines the primary REST APIs and Kafka-based integration points for the Federated CBDC Fraud Detection system.
 
 ## 1. Coordinator Domain
 
@@ -11,10 +11,8 @@ This document outlines the primary API endpoints and gRPC services for the Feder
     *   **Response**: `{"status": "success", "final_state": {...}}`
 
 ### Secure Aggregator (Port 8002)
-*   **gRPC Service**: `SecureAggregator`
-    *   **Method**: `AggregateUpdates`
-    *   **Input**: `AggregationRequest` (round_id, agent_ids, strategy)
-    *   **Output**: `AggregationResponse` (success, aggregated_weights, global_metrics)
+*   **POST** `/aggregate`
+    *   **Description**: Aggregate submitted model updates into a new global model snapshot.
 
 ### Policy Manager (Port 8003)
 *   **GET** `/policies/budget/{agent_id}`
@@ -36,10 +34,10 @@ This document outlines the primary API endpoints and gRPC services for the Feder
 *   **POST** `/agent/round/start`
     *   **Description**: Coordinator triggers local training round.
     *   **Query Params**: `round_id`, `agent_id`
-*   **gRPC Service**: `FederatedAgent`
-    *   **Method**: `StartTrainingRound`
+*   **GET** `/agent/status`
+    *   **Description**: Return the current local agent status and latest metrics.
 
-### Local GNN Model (Port 9002)
+### Local GNN (Port 9002)
 *   **POST** `/train`
     *   **Description**: Internal trigger for local training loop.
 *   **GET** `/health`
@@ -58,4 +56,4 @@ This document outlines the primary API endpoints and gRPC services for the Feder
 
 ## 3. Shared Schemas
 Refer to `shared/schemas/models.py` for Pydantic definitions used across REST interfaces.
-Refer to `shared/proto/federated.proto` for gRPC service definitions.
+Refer to `shared/contracts/` for shared OpenAPI/REST contract assets.

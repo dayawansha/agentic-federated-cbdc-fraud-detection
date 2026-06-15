@@ -1,6 +1,9 @@
-# Model Registry Service
+# Model Registry
 
-Model versioning and metrics management.
+Global model versioning, metrics tracking, and lifecycle management.
+
+## Runtime Name
+- `model-registry`
 
 ## Responsibilities
 - Store model versions

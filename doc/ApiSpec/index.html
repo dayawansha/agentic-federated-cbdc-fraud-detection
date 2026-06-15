@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Federated Fraud REST API And Kafka UI Index</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.5;
+      color: #1f2937;
+      background: #f8fafc;
+    }
+    h1, h2 {
+      color: #111827;
+    }
+    .note {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: #ffffff;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background: #e5e7eb;
+    }
+    a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    code {
+      background: #e5e7eb;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>API / Kafka Access Index</h1>
+
+  <div class="note">
+    Run <code>bash doc/ApiSpec/port-forward-swagger.sh</code> first.
+    Then use the links below to open the live Swagger UI for each service.
+  </div>
+
+  <h2>REST API Services</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Service</th>
+        <th>Kubernetes Service</th>
+        <th>Port</th>
+        <th>Swagger UI</th>
+        <th>OpenAPI JSON</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Agentic Coordinator</td>
+        <td><code>agentic-coordinator</code></td>
+        <td>8001</td>
+        <td><a href="http://127.0.0.1:8001/docs">http://127.0.0.1:8001/docs</a></td>
+        <td><a href="http://127.0.0.1:8001/openapi.json">http://127.0.0.1:8001/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Secure Aggregator</td>
+        <td><code>secure-aggregator</code></td>
+        <td>8002</td>
+        <td><a href="http://127.0.0.1:8002/docs">http://127.0.0.1:8002/docs</a></td>
+        <td><a href="http://127.0.0.1:8002/openapi.json">http://127.0.0.1:8002/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Policy Manager</td>
+        <td><code>policy-manager</code></td>
+        <td>8003</td>
+        <td><a href="http://127.0.0.1:8003/docs">http://127.0.0.1:8003/docs</a></td>
+        <td><a href="http://127.0.0.1:8003/openapi.json">http://127.0.0.1:8003/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Model Registry</td>
+        <td><code>model-registry</code></td>
+        <td>8004</td>
+        <td><a href="http://127.0.0.1:8004/docs">http://127.0.0.1:8004/docs</a></td>
+        <td><a href="http://127.0.0.1:8004/openapi.json">http://127.0.0.1:8004/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Local Agent</td>
+        <td><code>local-agent</code></td>
+        <td>9001</td>
+        <td><a href="http://127.0.0.1:9001/docs">http://127.0.0.1:9001/docs</a></td>
+        <td><a href="http://127.0.0.1:9001/openapi.json">http://127.0.0.1:9001/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Local GNN</td>
+        <td><code>local-gnn</code></td>
+        <td>9002</td>
+        <td><a href="http://127.0.0.1:9002/docs">http://127.0.0.1:9002/docs</a></td>
+        <td><a href="http://127.0.0.1:9002/openapi.json">http://127.0.0.1:9002/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Privacy Layer</td>
+        <td><code>privacy-layer</code></td>
+        <td>9003</td>
+        <td><a href="http://127.0.0.1:9003/docs">http://127.0.0.1:9003/docs</a></td>
+        <td><a href="http://127.0.0.1:9003/openapi.json">http://127.0.0.1:9003/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Transaction Graph</td>
+        <td><code>transaction-graph</code></td>
+        <td>9004</td>
+        <td><a href="http://127.0.0.1:9004/docs">http://127.0.0.1:9004/docs</a></td>
+        <td><a href="http://127.0.0.1:9004/openapi.json">http://127.0.0.1:9004/openapi.json</a></td>
+      </tr>
+      <tr>
+        <td>Alerting</td>
+        <td><code>alerting</code></td>
+        <td>9005</td>
+        <td><a href="http://127.0.0.1:9005/docs">http://127.0.0.1:9005/docs</a></td>
+        <td><a href="http://127.0.0.1:9005/openapi.json">http://127.0.0.1:9005/openapi.json</a></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Notes</h2>
+  <p>These Swagger pages are live views from the running services, not static exported specs.</p>
+  <p><code>fraud-dashboard</code> is the Fraud Dashboard frontend and does not expose Swagger UI.</p>
+
+  <h2>Kafka UI</h2>
+  <p>Run <code>bash doc/ApiSpec/port-forward-kafka-ui.sh</code> first, then open <a href="http://127.0.0.1:18080">http://127.0.0.1:18080</a>.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Kafka Item</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cluster</td>
+        <td><code>federated-fraud-kafka</code></td>
+      </tr>
+      <tr>
+        <td>Broker</td>
+        <td><code>kafka:9092</code> (broker id <code>1</code>)</td>
+      </tr>
+      <tr>
+        <td>Application Topics</td>
+        <td><code>transactions.events</code>, <code>fraud.alerts</code></td>
+      </tr>
+      <tr>
+        <td>Internal Topic</td>
+        <td><code>__consumer_offsets</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p><code>kafka-ui</code> exposes this dashboard. <code>transactions.events</code> is produced by <code>transaction-graph</code>. <code>fraud.alerts</code> is used by <code>alerting</code>.</p>
+</body>
+</html>

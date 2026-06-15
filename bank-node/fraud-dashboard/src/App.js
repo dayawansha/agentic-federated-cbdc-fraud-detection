@@ -1,8 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 function App() {
   const localAgentUrl = useMemo(() => {
     return process.env.REACT_APP_LOCAL_AGENT_URL || 'http://localhost:9001';
+  }, []);
+
+  const kafkaUiUrl = useMemo(() => {
+    return process.env.REACT_APP_KAFKA_UI_URL || 'http://localhost:18080';
   }, []);
 
   const alertingUrl = useMemo(() => {
@@ -86,6 +90,31 @@ function App() {
             <h3>Model Accuracy</h3>
             <p>{typeof modelAccuracy === 'number' ? `${(modelAccuracy * 100).toFixed(2)}%` : '-'}</p>
           </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Kafka UI</h3>
+          <p>Open the live Kafka UI to inspect the system broker, topics, partitions, and message data.</p>
+          <p><strong>Cluster:</strong> federated-fraud-kafka</p>
+          <p><strong>Broker:</strong> kafka:9092 (id: 1)</p>
+          <p><strong>Topics:</strong> transactions.events, fraud.alerts, __consumer_offsets</p>
+          <a
+            href={kafkaUiUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'inline-block',
+              marginTop: 8,
+              padding: '10px 16px',
+              borderRadius: 6,
+              background: '#1d4ed8',
+              color: '#ffffff',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}
+          >
+            Open Kafka UI
+          </a>
         </div>
 
         <div className="card" style={{ marginTop: 16 }}>

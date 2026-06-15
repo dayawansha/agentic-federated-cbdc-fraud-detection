@@ -1,6 +1,8 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
@@ -15,8 +17,6 @@ from src.trainer import LocalTrainer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Local GNN Model Service")
-
 class TrainRequest(BaseModel):
     round_id: Optional[str] = None
     global_weights: Optional[bytes] = None
@@ -28,30 +28,55 @@ class TrainResponse(BaseModel):
     sample_size: int
     metrics: Dict[str, float]
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
+def _resolve_data_file(relative_path: str, env_var: str) -> str:
+    override = os.getenv(env_var)
+    if override:
+        return override
+
+    service_root = Path(__file__).resolve().parents[1]
+    candidate_roots = [service_root, *service_root.parents]
+
+    for root in candidate_roots:
+        candidate = root / relative_path
+        if candidate.exists():
+            return str(candidate)
+
+    # Default to the service-root-relative location inside the container image.
+    return str(service_root / relative_path)
 def _resolve_default_paths() -> Dict[str, str]:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
     return {
-        "repo_root": repo_root,
         "shard_path": os.getenv(
-            "TX_SHARD_PATH",
-            os.path.join(repo_root, "train-data/processed/txs_shard_1.csv"),
+            "TX_SHARD_PATH", _resolve_data_file("train-data/processed/txs_shard_1.csv", "TX_SHARD_PATH")
         ),
         "edges_path": os.getenv(
-            "TX_EDGES_PATH",
-            os.path.join(repo_root, "train-data/processed/txs_edges_processed.csv"),
+            "TX_EDGES_PATH", _resolve_data_file("train-data/processed/txs_edges_processed.csv", "TX_EDGES_PATH")
         ),
         "classes_path": os.getenv(
             "TX_CLASSES_PATH",
-            os.path.join(
-                repo_root,
+            _resolve_data_file(
                 "train-data/EllipticPlusPlus-main/Transactions Dataset/txs_classes.csv",
+                "TX_CLASSES_PATH",
             ),
         ),
     }
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        _ = _init_trainer()
+        logger.info("Local GNN trainer initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize Local GNN trainer: {e}")
+    yield
+
+
+app = FastAPI(title="Local GNN Model Service", lifespan=lifespan)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 @lru_cache(maxsize=1)
 def _load_graph_data() -> Data:
@@ -122,14 +147,6 @@ def _init_trainer() -> LocalTrainer:
     lr = float(os.getenv("LR", "0.01"))
     weight_decay = float(os.getenv("WEIGHT_DECAY", "0.0005"))
     return LocalTrainer(model=model, lr=lr, weight_decay=weight_decay)
-
-@app.on_event("startup")
-async def startup_event():
-    try:
-        _ = _init_trainer()
-        logger.info("Local GNN trainer initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize Local GNN trainer: {e}")
 
 @app.post("/train")
 async def trigger_training(request: TrainRequest) -> TrainResponse:

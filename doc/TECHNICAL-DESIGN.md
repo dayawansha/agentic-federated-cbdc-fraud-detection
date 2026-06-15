@@ -96,31 +96,31 @@ This project adopts a **Design Science Research (DSR)** approach, focusing on de
 ```mermaid
 flowchart TB
     subgraph "Central Coordinator Node"
-        AC["Agentic Coordinator<br/>(Meta-Agent)"]
-        GA["Global Aggregator"]
-        PM["Policy Manager"]
-        MR["Model Registry"]
+        AC["agentic-coordinator"]
+        GA["secure-aggregator"]
+        PM["policy-manager"]
+        MR["model-registry"]
     end
 
     subgraph "Bank Node A"
-        LA1["Local Agent A"]
-        LM1["Local GNN Model A"]
-        DP1["Differential Privacy Module A"]
-        TG1["Transaction Graph A"]
+        LA1["local-agent A"]
+        LM1["local-gnn A"]
+        DP1["privacy-layer A"]
+        TG1["transaction-graph A"]
     end
 
     subgraph "Bank Node B"
-        LA2["Local Agent B"]
-        LM2["Local GNN Model B"]
-        DP2["Differential Privacy Module B"]
-        TG2["Transaction Graph B"]
+        LA2["local-agent B"]
+        LM2["local-gnn B"]
+        DP2["privacy-layer B"]
+        TG2["transaction-graph B"]
     end
 
     subgraph "Bank Node C"
-        LA3["Local Agent C"]
-        LM3["Local GNN Model C"]
-        DP3["Differential Privacy Module C"]
-        TG3["Transaction Graph C"]
+        LA3["local-agent C"]
+        LM3["local-gnn C"]
+        DP3["privacy-layer C"]
+        TG3["transaction-graph C"]
     end
 
     LA1 <-->|"Encrypted Model Updates"| AC
@@ -137,7 +137,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph "Central Bank Cluster"
-        CB["Central Coordinator"]
+        CB["agentic-coordinator + secure-aggregator<br/>policy-manager + model-registry"]
         SEC["Security Gateway"]
     end
     
@@ -152,11 +152,11 @@ flowchart LR
         PP2["Provider 2<br/>Local Node"]
     end
     
-    B1 <-.->|"TLS 1.3 + gRPC"| SEC
-    B2 <-.->|"TLS 1.3 + gRPC"| SEC
-    B3 <-.->|"TLS 1.3 + gRPC"| SEC
-    PP1 <-.->|"TLS 1.3 + gRPC"| SEC
-    PP2 <-.->|"TLS 1.3 + gRPC"| SEC
+    B1 <-.->|"TLS 1.3 + REST"| SEC
+    B2 <-.->|"TLS 1.3 + REST"| SEC
+    B3 <-.->|"TLS 1.3 + REST"| SEC
+    PP1 <-.->|"TLS 1.3 + REST"| SEC
+    PP2 <-.->|"TLS 1.3 + REST"| SEC
     SEC <--> CB
 ```
 
@@ -169,10 +169,10 @@ flowchart LR
 | Component | Responsibility | Technology |
 |-----------|---------------|------------|
 | **Local Agent** | Autonomous training, anomaly detection, model updates | Python, PyTorch |
-| **Local GNN Model** | Transaction graph analysis, fraud pattern detection | PyTorch Geometric |
+| **Local GNN** | Transaction graph analysis, fraud pattern detection | PyTorch Geometric |
 | **Agentic Coordinator** | Training orchestration, round scheduling, conflict resolution | LangChain/AutoGen |
-| **Global Aggregator** | Secure model aggregation, weight averaging | Flower Framework |
-| **Privacy Module** | Differential privacy, secure aggregation | PySyft, Opacus |
+| **Secure Aggregator** | Secure model aggregation, weight averaging | Flower Framework |
+| **Privacy Layer** | Differential privacy, secure aggregation | PySyft, Opacus |
 | **Transaction Graph** | Graph representation of transactions | NetworkX, DGL |
 
 ### 3.2 Local Agent Specification
@@ -720,41 +720,40 @@ flowchart TD
 
 ### 9.1 Message Format
 
-```protobuf
-// Protocol Buffer Definition for Agent Communication
-
-message ModelUpdate {
-    string agent_id = 1;
-    int32 round_number = 2;
-    bytes encrypted_weights = 3;  // Serialized, encrypted model weights
-    PerformanceMetrics local_metrics = 4;
-    int32 samples_trained = 5;
-    bytes differential_privacy_proof = 6;  // ZK proof of DP application
-    google.protobuf.Timestamp timestamp = 7;
-}
-
-message PerformanceMetrics {
-    float accuracy = 1;
-    float precision = 2;
-    float recall = 3;
-    float f1_score = 4;
-    float roc_auc = 5;
-    int32 fraud_cases_detected = 6;
-    int32 false_positives = 7;
-}
-
-message CoordinatorCommand {
-    string command_type = 1;  // START_ROUND, ABORT_ROUND, UPDATE_CONFIG
-    bytes global_model = 2;
-    RoundConfig config = 3;
-    repeated string target_agents = 4;
-}
-
-message AnomalyAlert {
-    string agent_id = 1;
-    string anomaly_type = 2;  // POISONING_SUSPECTED, DATA_DRIFT, MODEL_DEGRADATION
-    float confidence = 3;
-    bytes anonymized_pattern = 4;  // Privacy-preserved pattern description
+```json
+{
+  "model_update": {
+    "agent_id": "bank-01",
+    "round_number": 2,
+    "encrypted_weights": "base64-encoded-model-payload",
+    "local_metrics": {
+      "accuracy": 0.94,
+      "precision": 0.91,
+      "recall": 0.89,
+      "f1_score": 0.90,
+      "roc_auc": 0.96,
+      "fraud_cases_detected": 34,
+      "false_positives": 3
+    },
+    "samples_trained": 12000,
+    "differential_privacy_proof": "base64-encoded-proof",
+    "timestamp": "2026-06-13T10:30:00Z"
+  },
+  "coordinator_command": {
+    "command_type": "START_ROUND",
+    "global_model": "base64-encoded-global-model",
+    "config": {
+      "round_id": "round-02",
+      "epochs": 1
+    },
+    "target_agents": ["bank-01", "bank-02"]
+  },
+  "anomaly_alert": {
+    "agent_id": "bank-01",
+    "anomaly_type": "MODEL_DEGRADATION",
+    "confidence": 0.82,
+    "anonymized_pattern": "base64-encoded-pattern"
+  }
 }
 ```
 
@@ -953,7 +952,6 @@ dependencies:
     - pysyft
     - langchain
     - pyvis
-    - grpcio
     - cryptography
 ```
 

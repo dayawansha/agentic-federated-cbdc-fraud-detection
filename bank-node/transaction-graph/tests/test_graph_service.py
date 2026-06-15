@@ -48,5 +48,25 @@ class TestGraphService(unittest.TestCase):
         self.assertEqual(len(result['nodes']), 1)
         self.assertEqual(result['nodes'][0]['id'], 'acc1')
 
+    @patch('services.graph_service.db')
+    def test_get_all_accounts_logic(self, mock_db):
+        mock_session = MagicMock()
+        mock_db.get_session.return_value.__enter__.return_value = mock_session
+
+        mock_record = {
+            'account_id': 'acc1',
+            'sent_count': 2,
+            'received_count': 3,
+        }
+        mock_session.run.return_value = [mock_record]
+
+        result = GraphService.get_all_accounts(limit=25)
+
+        mock_session.run.assert_called_once()
+        args, kwargs = mock_session.run.call_args
+        self.assertIn("MATCH (a:Account)", args[0])
+        self.assertEqual(kwargs['limit'], 25)
+        self.assertEqual(result, [{'account_id': 'acc1', 'sent_count': 2, 'received_count': 3}])
+
 if __name__ == '__main__':
     unittest.main()

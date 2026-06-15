@@ -3,7 +3,7 @@
 
 **Version:** 2.0  
 **Created:** February 2026  
-**Updated:** February 2026  
+**Updated:** June 13, 2026  
 **Status:** Planning Phase  
 **Architecture:** Microservice Architecture
 
@@ -17,7 +17,7 @@
 |-----------|-------------|
 | **Independent Deployment** | Each service has its own codebase and can be deployed independently |
 | **Domain Grouping** | Services are grouped by domain (Coordinator / Bank Node) |
-| **Communication Patterns** | Inter-node: Kafka (CDC); Intra-node: gRPC |
+| **Communication Patterns** | Sync: REST; Async: Kafka (CDC) |
 | **Technology Agnostic** | Each service can use different technologies as needed |
 | **Loose Coupling** | Services communicate via well-defined APIs and events |
 
@@ -27,7 +27,6 @@
 graph LR
     subgraph "Synchronous"
         HTTP[HTTP/REST]
-        GRPC[gRPC]
     end
     
     subgraph "Asynchronous"
@@ -40,7 +39,6 @@ graph LR
 | Pattern | Use Case |
 |---------|----------|
 | **HTTP/REST** | CRUD operations, Dashboard APIs, External integrations |
-| **gRPC** | High-performance inter-service calls, Model transfer |
 | **SAGA** | Distributed transactions (e.g., FL training rounds) |
 | **CDC** | Transaction streaming, Real-time data sync |
 
@@ -57,7 +55,7 @@ graph TB
     
     subgraph "Bank Node Domain (per Bank)"
         LA[Local Agent]
-        LG[Local GNN Model]
+        LG[Local GNN]
         PL[Privacy Layer<br/>DP + Encryption]
         TG[Transaction Graph]
         FD[Fraud Dashboard<br/>Monitoring UI]
@@ -75,15 +73,15 @@ graph TB
     LA <-->|Kafka/CDC| AC
     LA <-->|Kafka/CDC| SA
     
-    %% Intra-Node Communication (Internal)
-    AC <-->|gRPC| SA
-    AC <-->|gRPC| PM
-    SA <-->|gRPC| MR
+    %% Internal synchronous communication
+    AC <-->|REST| SA
+    AC <-->|REST| PM
+    SA <-->|REST| MR
     
-    LA -->|gRPC| LG
-    LA -->|gRPC| PL
-    LG <-->|gRPC| TG
-    FD <-->|gRPC| LA
+    LA -->|REST| LG
+    LA -->|REST| PL
+    LG <-->|REST| TG
+    FD <-->|REST| LA
     AL <-->|Kafka/CDC| TG
     
     TG --> KF
@@ -101,20 +99,20 @@ graph TB
 
 | # | Service | Description | Port | Protocol |
 |---|---------|-------------|------|----------|
-| 1 | **Agentic Coordinator** | Meta-Agent for FL orchestration | 8001 | gRPC + Kafka |
-| 2 | **Secure Aggregator** | FedAvg/FedGNN model aggregation | 8002 | gRPC + Kafka |
-| 3 | **Policy Manager** | Privacy budgets + Governance | 8003 | gRPC |
-| 4 | **Model Registry** | Model versions + Metrics | 8004 | gRPC |
+| 1 | **Agentic Coordinator** | Meta-Agent for FL orchestration | 8001 | REST + Kafka |
+| 2 | **Secure Aggregator** | FedAvg/FedGNN model aggregation | 8002 | REST + Kafka |
+| 3 | **Policy Manager** | Privacy budgets + Governance | 8003 | REST |
+| 4 | **Model Registry** | Model versions + Metrics | 8004 | REST |
 
 ### 2.2 Bank Node Services (6 Services)
 
 | # | Service | Description | Port | Protocol |
 |---|---------|-------------|------|----------|
-| 5 | **Local Agent** | Autonomous training agent | 9001 | gRPC + Kafka |
-| 6 | **Local GNN** | GNN training & inference | 9002 | gRPC |
-| 7 | **Privacy Layer** | DP + Encryption | 9003 | gRPC |
-| 8 | **Transaction Graph** | Graph construction + CDC | 9004 | gRPC + CDC |
-| 9 | **Fraud Dashboard** | Monitoring UI | 3000 | gRPC |
+| 5 | **Local Agent** | Autonomous training agent | 9001 | REST + Kafka |
+| 6 | **Local GNN** | GNN training & inference | 9002 | REST |
+| 7 | **Privacy Layer** | DP + Encryption | 9003 | REST |
+| 8 | **Transaction Graph** | Graph construction + CDC | 9004 | REST + CDC |
+| 9 | **Fraud Dashboard** | Monitoring UI | 3000 | HTTP/REST |
 | 10 | **Alerting** | Email/Ticket notifications | 9005 | Kafka |
 
 ---
@@ -189,7 +187,7 @@ agentic-federated-cbdc-fraud-detection/
 │       └── README.md
 │
 ├── shared/                               # Shared Resources
-│   ├── proto/                            # gRPC Protobuf definitions
+│   ├── contracts/                        # Shared REST/OpenAPI contract assets
 │   ├── schemas/                          # Shared Pydantic/JSON schemas
 │   └── contracts/                        # API contracts (OpenAPI)
 │
@@ -227,7 +225,7 @@ service: agentic-coordinator
 domain: coordinator
 port: 8001
 protocols:
-  - gRPC (intra-node)
+  - REST (sync APIs)
   - Kafka (inter-node)
 technology:
   - Python 3.11+
@@ -239,8 +237,8 @@ responsibilities:
   - Adaptive scheduling based on node performance
   - SAGA orchestration for training workflows
 communication:
-  - gRPC → Secure Aggregator (Internal)
-  - gRPC → Policy Manager (Internal)
+  - REST → Secure Aggregator (Internal)
+  - REST → Policy Manager (Internal)
   - Kafka ↔ Local Agents (External)
 dependencies:
   - Redis (state management)
@@ -253,7 +251,7 @@ dependencies:
 service: secure-aggregator
 domain: coordinator
 port: 8002
-protocol: gRPC + Kafka
+protocol: REST + Kafka
 technology:
   - Python 3.11+
   - PyTorch
@@ -265,8 +263,8 @@ responsibilities:
   - Distribute global model
 communication:
   - Kafka ← Bank Node Local Agents (External)
-  - gRPC → Model Registry (Internal)
-  - gRPC → Policy Manager (Internal)
+  - REST → Model Registry (Internal)
+  - REST → Policy Manager (Internal)
 dependencies:
   - Model Registry
   - Policy Manager
@@ -324,7 +322,7 @@ dependencies:
 service: local-agent
 domain: bank-node
 port: 9001
-protocol: gRPC + Kafka
+protocol: REST + Kafka
 technology:
   - Python 3.11+
   - LangGraph
@@ -336,7 +334,7 @@ responsibilities:
 communication:
   - Kafka → Agentic Coordinator (External)
   - Kafka → Secure Aggregator (External)
-  - gRPC → Local GNN, Privacy Layer (Internal)
+  - REST → Local GNN, Privacy Layer (Internal)
 dependencies:
   - Local GNN
   - Privacy Layer
@@ -348,7 +346,7 @@ dependencies:
 service: local-gnn
 domain: bank-node
 port: 9002
-protocol: gRPC
+protocol: REST
 technology:
   - Python 3.11+
   - PyTorch
@@ -358,8 +356,8 @@ responsibilities:
   - Fraud inference
   - Feature extraction from graphs
 communication:
-  - gRPC ← Local Agent
-  - gRPC → Transaction Graph
+  - REST ← Local Agent
+  - REST → Transaction Graph
 dependencies:
   - Transaction Graph
   - CUDA/GPU (optional)
@@ -371,7 +369,7 @@ dependencies:
 service: privacy-layer
 domain: bank-node
 port: 9003
-protocol: gRPC
+protocol: REST
 technology:
   - Python 3.11+
   - Opacus
@@ -382,7 +380,7 @@ responsibilities:
   - Encrypt model updates
   - Secure aggregation protocol
 communication:
-  - gRPC ← Local Agent
+  - REST ← Local Agent
 dependencies:
   - None (standalone)
 ```
@@ -406,7 +404,7 @@ responsibilities:
   - Feature engineering
   - Real-time graph updates via CDC
 communication:
-  - gRPC ← Local GNN
+  - REST ← Local GNN
   - CDC → Kafka (transaction events)
   - Neo4j (graph storage)
 dependencies:
@@ -456,7 +454,7 @@ responsibilities:
   - Alert lifecycle management
 communication:
   - Kafka ← Transaction Graph (fraud events)
-  - gRPC → Notification Providers (Internal)
+  - REST → Notification Providers (Internal)
 dependencies:
   - Kafka
   - PostgreSQL (alert history)
@@ -470,7 +468,7 @@ dependencies:
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | **Backend Framework** | FastAPI | REST APIs |
-| **RPC Framework** | gRPC | Inter-service communication |
+| **API Style** | REST/HTTP + JSON | Synchronous inter-service communication |
 | **ML Framework** | PyTorch + PyG | GNN training |
 | **FL Framework** | Flower | Federated learning |
 | **Privacy** | Opacus, PySyft | Differential privacy |
@@ -497,7 +495,7 @@ dependencies:
 | Set up development environment | Critical | 2 |
 | Create microservice folder structure | Critical | 1 |
 | Implement Data Preparation pipeline (Elliptic++) | High | 2 |
-| Set up shared proto/schemas | Critical | 2 |
+| Set up shared REST contracts/schemas | Critical | 2 |
 | Docker Compose for local dev | High | 2 |
 | CI/CD pipeline (GitHub Actions) | High | 2 |
 
@@ -505,26 +503,26 @@ dependencies:
 
 | Task | Priority | Days |
 |------|----------|------|
-| Policy Manager service | Critical | 5 |
-| Model Registry service | Critical | 5 |
-| Secure Aggregator service | Critical | 8 |
-| Agentic Coordinator service | Critical | 10 |
+| Policy Manager | Critical | 5 |
+| Model Registry | Critical | 5 |
+| Secure Aggregator | Critical | 8 |
+| Agentic Coordinator | Critical | 10 |
 | SAGA workflow implementation | High | 5 |
 
 ### Phase 3: Bank Node Core Services (Week 7-10)
 
 | Task | Priority | Days |
 |------|----------|------|
-| Transaction Graph service | Critical | 6 |
-| Local GNN service | Critical | 8 |
-| Privacy Layer service | Critical | 6 |
-| Local Agent service | Critical | 8 |
+| Transaction Graph | Critical | 6 |
+| Local GNN | Critical | 8 |
+| Privacy Layer | Critical | 6 |
+| Local Agent | Critical | 8 |
 
 ### Phase 4: Supporting Services (Week 11-13)
 
 | Task | Priority | Days |
 |------|----------|------|
-| Alerting service | High | 4 |
+| Alerting | High | 4 |
 | Fraud Dashboard (React) | High | 8 |
 | CDC pipeline setup | High | 4 |
 
@@ -553,16 +551,16 @@ dependencies:
 
 ```mermaid
 sequenceDiagram
-    participant AC as Agentic Coordinator
-    participant PM as Policy Manager
-    participant SA as Secure Aggregator
-    participant LA as Local Agent (Bank)
-    participant MR as Model Registry
+    participant AC as agentic-coordinator
+    participant PM as policy-manager
+    participant SA as secure-aggregator
+    participant LA as local-agent
+    participant MR as model-registry
     
     Note over AC,MR: SAGA: Federated Learning Round
     
-    AC->>AC: 1. Check budgets (Internal gRPC)
-    AC->>AC: 2. Get global model (Internal gRPC)
+    AC->>PM: 1. Check budgets (REST)
+    AC->>MR: 2. Get global model (REST)
     
     AC->>KF: 3. InitiateRound (Kafka Topic)
     KF-->>LA: 4. Round Notification
@@ -571,7 +569,7 @@ sequenceDiagram
     
     KF-->>SA: 7. Grad Accumuler
     SA->>SA: 8. Aggregate & DP Noise
-    SA->>MR: 9. Save new model (Internal gRPC)
+    SA->>MR: 9. Save new model (REST)
     SA->>KF: 10. RoundComplete (Kafka Topic)
     KF-->>AC: 11. Finished
 ```
@@ -593,11 +591,11 @@ sequenceDiagram
 ## 9. Next Steps
 
 1. [ ] Create microservice folder structure
-2. [ ] Set up shared proto definitions
+2. [ ] Set up shared REST contract definitions
 3. [ ] Create Docker Compose for local development
-4. [ ] Begin Policy Manager service (simplest first)
+4. [ ] Begin Policy Manager (simplest first)
 5. [ ] Weekly progress reviews
 
 ---
 
-*Last Updated: February 2026*
+*Last Updated: June 13, 2026*

@@ -1,8 +1,8 @@
-# Service Development Status: Local GNN
+# Development Status: Local GNN
 
-**Current Status:** 🟢 Completed (MVP)
-**Progress:** 75%
-**Last Updated:** 2026-06-12
+**Current Status:** 🟡 In Progress (MVP with Runtime Dataset Fix Implemented)
+**Progress:** 80%
+**Last Updated:** 2026-06-13
 
 ---
 
@@ -10,7 +10,7 @@
 - **Service Name:** local-gnn
 - **Domain:** bank-node
 - **Port:** 9002
-- **Protocol:** REST (gRPC proto available)
+- **Protocol:** REST
 
 ---
 
@@ -24,7 +24,7 @@
 | Elliptic++ Processed Shard Loader | Critical | 🟢 Completed | 100% |
 | Training API (`/train`) returns real weights + metrics | High | 🟢 Completed | 100% |
 | Inference Engine | High | 🔴 Not Started | 0% |
-| gRPC Interface | Medium | 🔵 On Hold | - |
+| REST Training Interface | Medium | 🟢 Completed | 100% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
@@ -34,3 +34,6 @@
 - FraudGNN architecture implemented supporting GCN, GAT, and GraphSAGE.
 - LocalTrainer implemented with support for weighted federated updates.
 - Implemented loading for processed shards + edges + labels and produces model `state_dict` bytes for federated aggregation.
+- Implemented a runtime dataset-path fix so the service resolves training files correctly in both the repository and container image layouts.
+- Updated the Docker image to bundle the required processed shard, edges, and class-label CSV files for Kubernetes runtime.
+- Deployment verification is currently blocked by a Minikube/Docker overlay filesystem error; the cluster must be recovered before the new local-gnn image can be rolled out and validated live.

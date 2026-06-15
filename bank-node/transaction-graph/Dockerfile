@@ -35,6 +35,5 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 
 EXPOSE 9004
-EXPOSE 50051
 
 CMD ["python", "src/main.py"]

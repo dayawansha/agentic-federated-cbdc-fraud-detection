@@ -1,6 +1,9 @@
-# Policy Manager Service
+# Policy Manager
 
-Privacy budgets and governance management.
+Privacy budgets, governance enforcement, and compliance tracking.
+
+## Runtime Name
+- `policy-manager`
 
 ## Responsibilities
 - Manage privacy budgets (ε, δ)

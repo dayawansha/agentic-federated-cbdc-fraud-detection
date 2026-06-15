@@ -1,4 +1,4 @@
-# Service Development Status: Alerting
+# Development Status: Alerting
 
 **Current Status:** 🟡 In Progress
 **Progress:** 75%

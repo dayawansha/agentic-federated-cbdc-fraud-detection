@@ -1,6 +1,9 @@
-# Secure Aggregator Service
+# Secure Aggregator
 
-FedAvg/FedGNN model aggregation service.
+Federated model aggregation with optional DP noise over REST.
+
+## Runtime Name
+- `secure-aggregator`
 
 ## Responsibilities
 - Receive encrypted model updates
@@ -12,7 +15,7 @@ FedAvg/FedGNN model aggregation service.
 - Python 3.11+
 - PyTorch
 - Flower (FL framework)
-- gRPC
+- REST + Kafka
 
 ## Port
 - 8002

@@ -22,20 +22,20 @@ sequenceDiagram
     autonumber
 
     participant CBDC as CBDC Core / Payment Rail
-    participant TG as Transaction Graph (9004)
+    participant TG as transaction-graph (9004)
     participant N4J as Neo4j
     participant KF as Kafka
-    participant AL as Alerting (9005)
-    participant FD as Fraud Dashboard (3000)
+    participant AL as alerting (9005)
+    participant FD as fraud-dashboard (3000)
 
-    participant LA as Local Agent (9001)
-    participant LG as Local GNN (9002)
-    participant PL as Privacy Layer (9003)
+    participant LA as local-agent (9001)
+    participant LG as local-gnn (9002)
+    participant PL as privacy-layer (9003)
 
-    participant AC as Agentic Coordinator (8001)
-    participant SA as Secure Aggregator (8002)
-    participant PM as Policy Manager (8003)
-    participant MR as Model Registry (8004)
+    participant AC as agentic-coordinator (8001)
+    participant SA as secure-aggregator (8002)
+    participant PM as policy-manager (8003)
+    participant MR as model-registry (8004)
 
     rect rgb(245,245,245)
         Note over CBDC,MR: Overall Functional Flow (MVP): Data ingestion + Alerting + Federated Round Orchestration

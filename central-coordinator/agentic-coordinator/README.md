@@ -1,6 +1,9 @@
-# Agentic Coordinator Service
+# Agentic Coordinator
 
-Meta-Agent for orchestrating federated learning rounds.
+LangGraph-based orchestration for federated rounds and cross-service workflows.
+
+## Runtime Name
+- `agentic-coordinator`
 
 ## Responsibilities
 - Orchestrate federated learning rounds
@@ -12,7 +15,7 @@ Meta-Agent for orchestrating federated learning rounds.
 - Python 3.11+
 - FastAPI
 - LangGraph/LangChain
-- gRPC
+- Kafka
 
 ## Port
 - 8001

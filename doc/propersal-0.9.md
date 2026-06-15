@@ -311,7 +311,7 @@ Key responsibilities include:
 - Enforcing privacy constraints and local policies  
 - Controlling outbound communication from the institution  
 
-### 2) Local GNN Model
+### 2) Local GNN
 
 The Local Graph Neural Network (GNN) Model performs fraud detection learning using institution-specific transaction data.
 

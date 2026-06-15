@@ -1,6 +1,9 @@
-# Privacy Layer Service
+# Privacy Layer
 
-Differential privacy and encryption service.
+Differential privacy and update-protection layer for federated model weights.
+
+## Runtime Name
+- `privacy-layer`
 
 ## Responsibilities
 - Apply differential privacy to gradients
@@ -12,7 +15,7 @@ Differential privacy and encryption service.
 - Opacus
 - PySyft
 - cryptography
-- gRPC
+- REST
 
 ## Port
 - 9003

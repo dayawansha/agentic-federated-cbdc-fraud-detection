@@ -1,17 +1,20 @@
-# Local Agent Service
+# Local Agent
 
-Autonomous training agent for bank nodes.
+Autonomous bank-node coordinator for local training, privacy, and model submission.
+
+## Runtime Name
+- `local-agent`
 
 ## Responsibilities
 - Autonomous training decisions
-- Coordinate local services
+- Coordinate local-gnn and privacy-layer
 - Submit model updates
 - Anomaly detection response
 
 ## Technology Stack
 - Python 3.11+
 - LangGraph
-- gRPC
+- REST + Kafka
 
 ## Port
 - 9001

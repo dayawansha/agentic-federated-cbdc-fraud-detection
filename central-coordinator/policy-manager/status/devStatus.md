@@ -1,4 +1,4 @@
-# Service Development Status: Policy Manager
+# Development Status: Policy Manager
 
 **Current Status:** 🟢 Completed (MVP)
 **Progress:** 80%
