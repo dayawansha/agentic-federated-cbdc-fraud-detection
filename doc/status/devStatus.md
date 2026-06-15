@@ -1,9 +1,9 @@
 # Development Status
 ## Agentic Federated Learning Framework for CBDC Fraud Detection
 
-**Last Updated:** June 13, 2026  
+**Last Updated:** June 15, 2026  
 **Current Phase:** MVP Complete (End-to-End Round Flow Running)  
-**Overall Progress:** 85%
+**Overall Progress:** 87%
 
 ---
 
@@ -24,7 +24,7 @@
 - **End-to-End FL Round (MVP)**: Implemented a working round flow across Coordinator → Agents → Aggregator → Registry → Policy Manager.
 - **Local GNN Training (Real Data)**: Local GNN trains on processed Elliptic++ shard and returns real model weights and metrics.
 - **Privacy Layer**: Differential privacy noise application and encryption utilities exposed via REST.
-- **Operational Visibility (MVP)**: Alerting supports recent alerts API and WebSocket broadcast; Dashboard consumes agent status + alerts.
+- **Operational Visibility (MVP+)**: Alerting supports recent alerts API and WebSocket broadcast; Dashboard now exposes KPI cards, service health, and full analytics visualizations.
 
 ### Key Milestones
 
@@ -72,7 +72,7 @@ Unit Tests:             1 / 10 (partial)
 | Local GNN | 🟢 MVP Complete | 75% | Trains on processed Elliptic++ shard; returns weights + metrics |
 | Privacy Layer | 🟢 MVP Complete | 80% | DP + encrypt/decrypt REST endpoints |
 | Transaction Graph | 🟡 In Progress | 70% | Neo4j + CDC producer; basic feature endpoint added |
-| Fraud Dashboard | 🟡 In Progress | 60% | Polls agent status + shows alerts; WS updates from alerting |
+| Fraud Dashboard | 🟢 Feature Complete | 95% | KPI cards, service health, alert analytics, transaction activity, and live alert feed are implemented |
 | Alerting | 🟡 In Progress | 75% | Recent alerts + WS broadcast; optional SMTP |
 
 ---
@@ -114,7 +114,7 @@ Unit Tests:             1 / 10 (partial)
 
 ### Phase 4: Supporting Services (Week 11-13)
 - [🟡] Alerting (Kafka + WS + recent alerts)
-- [🟡] Fraud Dashboard (polling + WS)
+- [x] Fraud Dashboard (operator view + analytics)
 - [ ] CDC pipeline setup
 
 ### Phase 5: Integration & Testing (Week 14-16)

@@ -1,0 +1,7 @@
+global:
+  image:
+    pullPolicy: IfNotPresent
+  localCluster:
+    enabled: true
+    appNodeSelector:
+      app-runtime: "true"

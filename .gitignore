@@ -1,1 +1,9 @@
 /.idea/
+.DS_Store
+__pycache__/
+*.pyc
+bank-node/fraud-dashboard/node_modules/
+bank-node/fraud-dashboard/build/
+/logs.txt
+train-data/EllipticPlusPlus-main/
+train-data/processed/

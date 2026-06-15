@@ -1,0 +1,87 @@
+# Global configuration for the federated fraud detection system
+global:
+  app:
+    partOf: "federated-fraud-detection"
+  image:
+    repository: dusman/federated-fraud
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  localCluster:
+    enabled: false
+    appNodeSelector: {}
+  
+  kafka:
+    bootstrapServers: "kafka:9092"
+  
+  postgres:
+    host: "postgres"
+    port: 5432
+    user: "user"
+    password: "password"
+    database: "federated_fraud_db"
+
+  neo4j:
+    host: "neo4j"
+    port: 7687
+    user: "neo4j"
+    password: "password"
+
+  redis:
+    host: "redis"
+    port: 6379
+
+# Service-specific configurations
+services:
+  agenticCoordinator:
+    replicaCount: 1
+    port: 8001
+  
+  secureAggregator:
+    replicaCount: 1
+    port: 8002
+  
+  policyManager:
+    replicaCount: 1
+    port: 8003
+  
+  modelRegistry:
+    replicaCount: 1
+    port: 8004
+  
+  localAgent:
+    replicaCount: 1 # Reduced for limited server capacity
+    port: 9001
+  
+  localGnn:
+    replicaCount: 1
+    port: 9002
+  
+  privacyLayer:
+    replicaCount: 1
+    port: 9003
+  
+  transactionGraph:
+    replicaCount: 1
+    port: 9004
+  
+  alerting:
+    replicaCount: 1
+    port: 9005
+  
+  fraudDashboard:
+    replicaCount: 1
+    port: 3000
+
+# Infrastructure components (can be toggled if using external cloud services)
+infrastructure:
+  kafka:
+    enabled: true
+  kafkaUi:
+    enabled: true
+    port: 8080
+  postgres:
+    enabled: true
+  neo4j:
+    enabled: true
+  redis:
+    enabled: true
