@@ -36,6 +36,14 @@ bash doc/ApiSpec/port-forward-swagger.sh
 
 This starts all required `kubectl port-forward` sessions and keeps them running in that terminal.
 
+If you already started the full stack with:
+
+```bash
+bash scripts/all_in_one_minikube.sh up --start-minikube
+```
+
+the API endpoints may already be available through the managed port-forwards from that workflow.
+
 To open the central API index in your browser automatically:
 
 ```bash
@@ -72,6 +80,16 @@ Default local Kafka UI URL for `kafka-ui`:
 
 If `18080` is already in use on your Mac, the script now automatically tries the next free local port and prints the final URL.
 
+If you started the platform with the all-in-one minikube workflow:
+
+```bash
+bash scripts/all_in_one_minikube.sh up --start-minikube
+```
+
+Kafka UI is exposed at:
+
+- [Kafka UI via all-in-one](http://127.0.0.1:8080)
+
 ## Kafka Inventory Used By This System
 
 The current overall system Kafka setup exposed in the dashboard is:
@@ -97,3 +115,4 @@ Topic meaning:
 - Press `Ctrl+C` in the script terminal to stop all forwarded ports.
 - Swagger shows the live request/response schemas from each running FastAPI service.
 - If a service is rebuilt or restarted, run the script again so the local forwards are refreshed.
+- The all-in-one workflow manages its own port-forwards, so use the URLs printed by `scripts/all_in_one_minikube.sh status` when that stack is already running.

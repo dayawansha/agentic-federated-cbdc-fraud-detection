@@ -57,6 +57,11 @@
     Then use the links below to open the live Swagger UI for each service.
   </div>
 
+  <div class="note">
+    If you already started the full stack with <code>bash scripts/all_in_one_minikube.sh up --start-minikube</code>,
+    these API and Kafka UI endpoints may already be available through the managed port-forwards.
+  </div>
+
   <h2>REST API Services</h2>
   <table>
     <thead>
@@ -140,7 +145,8 @@
   <p><code>fraud-dashboard</code> is the Fraud Dashboard frontend and does not expose Swagger UI.</p>
 
   <h2>Kafka UI</h2>
-  <p>Run <code>bash doc/ApiSpec/port-forward-kafka-ui.sh</code> first, then open <a href="http://127.0.0.1:18080">http://127.0.0.1:18080</a>.</p>
+  <p>Run <code>bash doc/ApiSpec/port-forward-kafka-ui.sh</code> first, then open the Kafka UI URL printed by the script. It defaults to <a href="http://127.0.0.1:18080">http://127.0.0.1:18080</a>, but it may automatically use the next free local port if <code>18080</code> is already in use.</p>
+  <p>If you started the platform with <code>bash scripts/all_in_one_minikube.sh up --start-minikube</code>, Kafka UI is exposed at <a href="http://127.0.0.1:8080">http://127.0.0.1:8080</a>.</p>
 
   <table>
     <thead>
