@@ -18,7 +18,7 @@ Modes:
   verify  Verify dashboard proxy counts without changing data
 
 Environment:
-  GRAPH_LIMIT=40
+  GRAPH_LIMIT=300
   DASHBOARD_PORT=43000
   GRAPH_PORT=49004
   EXPECTED_ACCOUNTS_COUNT

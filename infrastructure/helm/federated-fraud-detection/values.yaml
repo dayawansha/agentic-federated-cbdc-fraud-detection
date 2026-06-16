@@ -47,6 +47,7 @@ services:
   modelRegistry:
     replicaCount: 1
     port: 8004
+    hostPath: "/Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/model-registry/artifacts"
   
   localAgent:
     replicaCount: 1 # Reduced for limited server capacity
@@ -84,4 +85,6 @@ infrastructure:
   neo4j:
     enabled: false
   redis:
+    enabled: true
+  pgadmin:
     enabled: true

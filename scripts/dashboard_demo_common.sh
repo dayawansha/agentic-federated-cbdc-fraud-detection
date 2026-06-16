@@ -12,7 +12,9 @@ KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
 KAFKA_FRAUD_ALERTS_TOPIC="${KAFKA_FRAUD_ALERTS_TOPIC:-fraud.alerts}"
 GRAPH_PORT="${GRAPH_PORT:-49004}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-43000}"
-GRAPH_LIMIT="${GRAPH_LIMIT:-40}"
+GRAPH_LIMIT="${GRAPH_LIMIT:-300}"
+GRAPH_NODES_PATH="${GRAPH_NODES_PATH:-${ROOT_DIR}/train-data/processed/txs_nodes_processed.csv}"
+GRAPH_EDGES_PATH="${GRAPH_EDGES_PATH:-${ROOT_DIR}/train-data/processed/txs_edges_processed.csv}"
 VERIFY_DASHBOARD="${VERIFY_DASHBOARD:-true}"
 EXPECTED_ACCOUNTS_COUNT="${EXPECTED_ACCOUNTS_COUNT:-}"
 EXPECTED_ALERT_COUNT="${EXPECTED_ALERT_COUNT:-}"
@@ -116,6 +118,8 @@ dashboard_demo_restart_alerting() {
 dashboard_demo_seed_graph() {
   python3 "${ROOT_DIR}/scripts/load_transaction_graph_processed.py" \
     --api-base-url "http://127.0.0.1:${GRAPH_PORT}" \
+    --nodes-path "${GRAPH_NODES_PATH}" \
+    --edges-path "${GRAPH_EDGES_PATH}" \
     --limit "${GRAPH_LIMIT}"
 }
 

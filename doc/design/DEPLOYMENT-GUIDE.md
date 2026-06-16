@@ -329,7 +329,7 @@ Useful smoke-test options:
 The repository also includes a GitHub Actions workflow at `.github/workflows/dashboard-smoke.yml` that runs the same smoke script on `workflow_dispatch` or `workflow_call`.
 
 Useful environment overrides:
-- `GRAPH_LIMIT=40` controls how many processed edges are loaded into `transaction-graph`
+- `GRAPH_LIMIT=300` controls how many processed edges are loaded into `transaction-graph`
 - `GRAPH_PORT=49004` changes the temporary local port-forward used for `transaction-graph`
 - `DASHBOARD_PORT=43000` changes the temporary local port-forward used for dashboard verification
 - `VERIFY_DASHBOARD=false` skips the final dashboard proxy checks and only seeds graph and alert data

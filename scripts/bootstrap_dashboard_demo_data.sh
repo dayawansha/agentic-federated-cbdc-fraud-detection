@@ -18,7 +18,7 @@ fi
 echo "Ensuring Kafka topic ${KAFKA_FRAUD_ALERTS_TOPIC} exists..."
 dashboard_demo_ensure_topic
 
-echo "Loading ${GRAPH_LIMIT} processed transactions into transaction-graph..."
+echo "Loading ${GRAPH_LIMIT} processed transactions from ${GRAPH_NODES_PATH} into transaction-graph..."
 dashboard_demo_seed_graph
 
 echo "Publishing demo fraud alerts into ${KAFKA_FRAUD_ALERTS_TOPIC}..."
