@@ -370,3 +370,57 @@ The GNN trainer service **[local-gnn-model](file:///Users/dusman/Documents/MSC/r
     2.  Converts the transaction classes mapping (`1` -> `1`, `2` -> `0`, `3` -> `2`) to construct target labels `y` for PyTorch.
     3.  Builds the PyTorch Geometric **`Data`** object containing local node features (`x`), graph structural edges (`edge_index`), class labels (`y`), and transaction IDs (`tx_ids`).
     4.  Runs standard training epochs locally to compute training metrics (Loss, Accuracy, F1-Score) and output optimized model weights.
+
+
+---
+
+## Part 4: Data Read/Write Lifecycle & State Persistence
+
+This section details how the Bank Nodes and Central Coordinator manage runtime states, trained weights, datasets, and schema configurations under both stateless and persistent requirements.
+
+### 1. Bank Node Data Flow (Stateless & Read-Only)
+
+To support isolation and elastic scalability, the local processing services inside each Bank Node are designed to operate as **100% stateless** memory runtimes during federated rounds.
+
+#### A. Model Weights & Training State (In-Memory Processing)
+Neither the GNN training node nor the local agent persists `.pt` model weights or training metrics onto their local container filesystems.
+
+*   **`local-gnn`**: When a training step is invoked via `POST /train`, the service receives the starting global model weights as raw binary parameters sent over the network. It loads these weights into PyTorch using memory buffers (`io.BytesIO`), executes the training epochs, and serializes the optimized local weights back to an in-memory buffer to return as the HTTP response payload.
+    *   *Reference:* [trainer.py:L119-L129](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/bank-node/local-gnn-model/src/trainer.py#L119-L129) (`get_model_weights` & `set_model_weights`)
+*   **`local-agent`**: Orchestrates state transitions entirely within Python memory maps. Local updates are kept in a runtime dictionary (`agent_status`), and Differential Privacy perturbation and symmetric AES-Fernet encryption are executed as in-memory streams prior to sending updates to the coordinator.
+
+#### B. GNN Training Datasets (Read-Only CSV Shards)
+To execute local GNN training steps, `local-gnn` maps static transaction features and edge structures from read-only files. The default local data directory paths inside the service container are:
+
+| Data Type | Environment Variable | Default File Path | Description |
+|---|---|---|---|
+| **Node Features Shard** | `TX_SHARD_PATH` | `train-data/processed/txs_shard_1.csv` | Transaction node features mapped to this specific bank partition |
+| **Graph Edges** | `TX_EDGES_PATH` | `train-data/processed/txs_edges_processed.csv` | Structural transaction relationship links |
+| **Labels & Classes** | `TX_CLASSES_PATH` | `train-data/EllipticPlusPlus-main/Transactions Dataset/txs_classes.csv` | Target fraud classification mapping labels |
+
+*   *Reference:* [main.py:L102-L115](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/bank-node/local-gnn-model/src/main.py#L102-L115) (`_resolve_default_paths`)
+
+---
+
+### 2. Central Coordinator Storage Flow (Hybrid Persistence)
+
+In contrast to the stateless Bank Nodes, the Central Coordinator implements a **hybrid persistence** architecture to guarantee that global GNN updates, audit logs, and version control are preserved across service restarts and scale-ups.
+
+#### A. Model Metadata Tracking (Relational Database)
+All global version records, model metrics, registration dates, and reference paths are recorded in PostgreSQL (`federated_fraud_db`) inside the `model_versions` table.
+
+*   **Database Interface**: SQLAlchemy ORM + PostgreSQL client driver
+*   **Tracked Schema**:
+    *   `version_id`: Unique version tag (e.g., `v-20260616050647-cvf8k`) generated using a combination of the current UTC date and random characters.
+    *   `created_at`: The exact registration timestamp.
+    *   `metrics`: PostgreSQL `JSONB` column containing raw dictionaries of aggregated scores (e.g., `{"accuracy": 0.93, "f1_score": 0.88, ...}`).
+    *   `artifact_path`: Host file path pointing to where the weights binary is stored.
+    *   `is_global`: Flag identifying whether the model is a final aggregated global version or an intermediate step.
+
+#### B. Model Weights Binary (Disk & Persistent Volume Storage)
+The actual model weight tensors are stored directly on disk using PyTorch binary serialization:
+
+*   **Base64 Decoding**: When `model-registry` receives the model weights as a Base64-encoded string, it decodes it and writes the binary content to a `.pt` file (e.g., `v-*.pt`).
+*   **Kubernetes Persistence**: To prevent loss of model checkpoints when pods recycle, the weight folder (`ARTIFACT_DIR`, defaulting to `/app/artifacts`) is backed by a Kubernetes Persistent Volume Claim (PVC) (`model-registry-pvc`), persisting training runs indefinitely.
+*   *Reference:* [main.py:L75-L85](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/model-registry/src/main.py#L75-L85) (model weight persistence routine)
+
