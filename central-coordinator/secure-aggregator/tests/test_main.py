@@ -240,6 +240,38 @@ class TestSecureAggregator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Update from agent-a is missing privacy protection")
 
+    async def test_aggregate_uses_negotiated_weights(self):
+        update_a = base64.b64encode(serialize_state({"weight": torch.Tensor(1.0)})).decode("ascii")
+        update_b = base64.b64encode(serialize_state({"weight": torch.Tensor(5.0)})).decode("ascii")
+        request = main.AggregateRequest(
+            round_id="round-negotiated-test",
+            updates=[
+                main.AggregationItem(
+                    agent_id="agent-a",
+                    weights=update_a,
+                    sample_size=1,
+                    metrics={"loss": 0.8},
+                    privacy_applied=True,
+                    negotiated_weight=0.2,
+                ),
+                main.AggregationItem(
+                    agent_id="agent-b",
+                    weights=update_b,
+                    sample_size=3,
+                    metrics={"loss": 0.2},
+                    privacy_applied=True,
+                    negotiated_weight=0.8,
+                ),
+            ],
+        )
+
+        response = await main.aggregate(request)
+        state = deserialize_state(base64.b64decode(response.aggregated_weights))
+
+        self.assertTrue(response.success)
+        self.assertAlmostEqual(state["weight"].value, 4.2)
+        self.assertAlmostEqual(response.global_metrics["loss"], 0.32)
+
 
 if __name__ == "__main__":
     unittest.main()

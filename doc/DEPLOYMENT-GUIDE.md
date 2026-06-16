@@ -282,11 +282,11 @@ Open these in the browser when needed:
 For the dashboard itself, a single port-forward is now enough because the dashboard proxies its upstream APIs inside the cluster:
 
 ```bash
-kubectl port-forward svc/fraud-dashboard 3000:3000
+kubectl port-forward svc/fraud-dashboard 3001:3001
 ```
 
 Then open:
-- `http://localhost:3000`
+- `http://localhost:3001`
 
 The dashboard now routes:
 - `GET /api/local-agent/*`

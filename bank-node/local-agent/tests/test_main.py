@@ -261,6 +261,63 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alerts[0]["agent_id"], "agent-1")
         self.assertEqual(alerts[0]["source"], "local-agent-inference")
 
+    async def test_propose_weights_calculates_correct_ratios(self):
+        req = main.WeightNegotiationRequest(
+            round_id="round-test",
+            agents=[
+                main.WeightNegotiationItem(
+                    agent_id="agent-a",
+                    sample_size=10,
+                    reliability_score=0.9,
+                    metrics={"f1_score": 0.8}
+                ),
+                main.WeightNegotiationItem(
+                    agent_id="agent-b",
+                    sample_size=20,
+                    reliability_score=1.0,
+                    metrics={"f1_score": 0.9}
+                )
+            ]
+        )
+        # score A = 10 * 0.8 * 0.9 = 7.2
+        # score B = 20 * 0.9 * 1.0 = 18.0
+        # total = 25.2
+        # weight A = 7.2 / 25.2 = 0.2857...
+        # weight B = 18.0 / 25.2 = 0.7142...
+        resp = await main.propose_weights(req)
+        self.assertEqual(resp.agent_id, "local-agent")
+        self.assertAlmostEqual(resp.proposed_weights["agent-a"], 7.2 / 25.2, places=4)
+        self.assertAlmostEqual(resp.proposed_weights["agent-b"], 18.0 / 25.2, places=4)
+
+    async def test_evaluate_pattern_approves_valid_ranges(self):
+        proposal = main.FraudPatternProposal(
+            proposal_id="prop-1",
+            proposer_id="agent-b",
+            pattern_name="High Velocity",
+            feature_indicators={
+                "transaction_velocity_threshold": 12.5,
+                "risk_score_threshold": 0.85
+            },
+            rationale="Test"
+        )
+        vote = await main.evaluate_pattern(proposal)
+        self.assertEqual(vote.vote, "APPROVE")
+        self.assertIn("indicators are within valid", vote.reason)
+
+    async def test_evaluate_pattern_rejects_out_of_bounds(self):
+        proposal = main.FraudPatternProposal(
+            proposal_id="prop-2",
+            proposer_id="agent-b",
+            pattern_name="Invalid Risk Score",
+            feature_indicators={
+                "risk_score_threshold": 1.5
+            },
+            rationale="Test"
+        )
+        vote = await main.evaluate_pattern(proposal)
+        self.assertEqual(vote.vote, "REJECT")
+        self.assertIn("out of bounds", vote.reason)
+
 
 if __name__ == "__main__":
     unittest.main()

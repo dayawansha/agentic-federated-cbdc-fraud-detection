@@ -39,10 +39,8 @@ PORT_FORWARDS=(
   "privacy-layer|service/privacy-layer|9003:9003"
   "transaction-graph|service/transaction-graph|9004:9004"
   "alerting|service/alerting|9005:9005"
-  "fraud-dashboard|service/fraud-dashboard|3000:3000"
+  "fraud-dashboard|service/fraud-dashboard|3001:3001"
   "kafka-ui|service/kafka-ui|8080:8080"
-  "neo4j-http|service/neo4j|7474:7474"
-  "neo4j-bolt|service/neo4j|7687:7687"
 )
 
 usage() {
@@ -403,7 +401,7 @@ Image tag: ${IMAGE_TAG}
 Namespace: ${NAMESPACE}
 
 Forwarded endpoints:
-  Dashboard:            http://127.0.0.1:3000
+  Dashboard:            http://127.0.0.1:3001
   Agentic Coordinator:  http://127.0.0.1:8001
   Secure Aggregator:    http://127.0.0.1:8002
   Policy Manager:       http://127.0.0.1:8003
@@ -414,8 +412,6 @@ Forwarded endpoints:
   Transaction Graph:    http://127.0.0.1:9004
   Alerting:             http://127.0.0.1:9005
   Kafka UI:             http://127.0.0.1:8080
-  Neo4j Browser:        http://127.0.0.1:7474
-  Neo4j Bolt:           bolt://127.0.0.1:7687
 
 Useful follow-ups:
   bash scripts/demo_dashboard_lifecycle.sh verify

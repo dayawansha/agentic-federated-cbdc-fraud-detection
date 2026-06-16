@@ -49,6 +49,22 @@ except ModuleNotFoundError:
 import main
 
 
+class FakeResponse:
+    def __init__(self, payload, status_code=200, text=""):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            request = main.httpx.Request("POST", "http://localhost:8001")
+            response = main.httpx.Response(self.status_code, request=request, text=self.text)
+            raise main.httpx.HTTPStatusError("request failed", request=request, response=response)
+
+
 class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         main.round_updates.clear()
@@ -460,6 +476,116 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(strategy, "WeightedFedAvg")
+
+    async def test_negotiate_weights_reaches_consensus(self):
+        state = {
+            "round_id": "round-negotiate",
+            "active_agents": [],
+            "updates_received": [
+                main.UpdateSubmission(
+                    agent_id="http://agent-a",
+                    round_id="round-negotiate",
+                    weights="dGVzdA==",
+                    sample_size=10,
+                    metrics={"accuracy": 0.9, "f1_score": 0.8},
+                    privacy_applied=True,
+                ),
+                main.UpdateSubmission(
+                    agent_id="http://agent-b",
+                    round_id="round-negotiate",
+                    weights="dGVzdDI=",
+                    sample_size=12,
+                    metrics={"accuracy": 0.92, "f1_score": 0.82},
+                    privacy_applied=True,
+                ),
+            ],
+            "valid_updates": [],
+            "rejected_updates": [],
+            "aggregation_complete": False,
+            "metrics": {},
+            "policies": main._normalize_global_policies({"require_encrypted_updates": False}),
+            "selected_strategy": "FedAvg",
+            "current_step": "init",
+            "negotiated_weights": None
+        }
+
+        payload_a = {
+            "agent_id": "http://agent-a",
+            "proposed_weights": {"http://agent-a": 0.4, "http://agent-b": 0.6}
+        }
+        payload_b = {
+            "agent_id": "http://agent-b",
+            "proposed_weights": {"http://agent-a": 0.4, "http://agent-b": 0.6}
+        }
+
+        responses = [
+            FakeResponse(payload_a, status_code=200),
+            FakeResponse(payload_b, status_code=200),
+            FakeResponse({"status": "success"}, status_code=200)
+        ]
+
+        class MultiFakeAsyncClient:
+            def __init__(self):
+                self.calls = []
+                self.resp_idx = 0
+            async def __aenter__(self): return self
+            async def __aexit__(self, exc_type, exc, tb): return False
+            async def post(self, url, json=None, timeout=None):
+                self.calls.append({"url": url, "json": json})
+                r = responses[self.resp_idx]
+                self.resp_idx = (self.resp_idx + 1) % len(responses)
+                return r
+
+        with patch.object(main.httpx, "AsyncClient", return_value=MultiFakeAsyncClient()):
+            result = await main.negotiate_weights(state)
+
+        self.assertEqual(result["current_step"], "negotiation_succeeded")
+        self.assertIsNotNone(result["negotiated_weights"])
+        self.assertAlmostEqual(result["negotiated_weights"]["http://agent-a"], 0.4)
+        self.assertAlmostEqual(result["negotiated_weights"]["http://agent-b"], 0.6)
+
+    async def test_propose_fraud_pattern_consensus_reached(self):
+        proposal = main.FraudPatternProposal(
+            proposal_id="prop-abc",
+            proposer_id="http://agent-a",
+            pattern_name="High Velocity",
+            feature_indicators={"risk_score_threshold": 0.9},
+            rationale="test"
+        )
+        vote_a = {"agent_id": "http://agent-a", "proposal_id": "prop-abc", "vote": "APPROVE", "reason": "ok"}
+        vote_b = {"agent_id": "http://agent-b", "proposal_id": "prop-abc", "vote": "APPROVE", "reason": "ok"}
+
+        responses = [
+            FakeResponse(vote_a, status_code=200),
+            FakeResponse(vote_b, status_code=200),
+            FakeResponse({"policies": {"min_agents_per_round": 1}}, status_code=200),
+            FakeResponse({"status": "success"}, status_code=200)
+        ]
+
+        class ConsensusFakeClient:
+            def __init__(self):
+                self.calls = []
+                self.resp_idx = 0
+            async def __aenter__(self): return self
+            async def __aexit__(self, exc_type, exc, tb): return False
+            async def post(self, url, json=None, timeout=None):
+                self.calls.append({"method": "POST", "url": url, "json": json})
+                r = responses[self.resp_idx]
+                self.resp_idx = (self.resp_idx + 1) % len(responses)
+                return r
+            async def get(self, url, timeout=None):
+                self.calls.append({"method": "GET", "url": url})
+                r = responses[self.resp_idx]
+                self.resp_idx = (self.resp_idx + 1) % len(responses)
+                return r
+
+        with patch.object(main, "LOCAL_AGENT_URLS", ["http://agent-a", "http://agent-b"]):
+            with patch.object(main.httpx, "AsyncClient", return_value=ConsensusFakeClient()):
+                result = await main.propose_fraud_pattern(proposal)
+
+        self.assertEqual(result["status"], "approved")
+        self.assertTrue(result["consensus_reached"])
+        self.assertEqual(result["approvals"], 2)
 
 
 if __name__ == "__main__":

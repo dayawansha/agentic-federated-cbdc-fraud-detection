@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import hashlib
 import base64
 import io
@@ -11,6 +12,17 @@ from langgraph.graph import StateGraph, END
 import asyncio
 import httpx
 from datetime import datetime, timezone
+
+# Add project root to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+
+from shared.schemas.models import (
+    WeightNegotiationRequest,
+    WeightNegotiationItem,
+    WeightNegotiationResponse,
+    FraudPatternProposal,
+    ConsensusVote,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,6 +92,7 @@ class AgentState(TypedDict):
     policies: Dict[str, Any]
     selected_strategy: str
     current_step: str
+    negotiated_weights: Optional[Dict[str, float]]
 
 def _normalize_global_policies(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     policies = dict(DEFAULT_GLOBAL_POLICIES)
@@ -501,6 +514,132 @@ async def wait_for_updates(state: AgentState):
     state["current_step"] = "aggregating"
     return state
 
+async def negotiate_weights(state: AgentState):
+    logger.info("Initiating weight negotiation phase among participating agents...")
+    round_id = state["round_id"]
+    updates = state.get("updates_received", [])
+    if not updates:
+        state["negotiated_weights"] = None
+        state["current_step"] = "negotiation_skipped"
+        return state
+
+    policies = _normalize_global_policies(state.get("policies"))
+    valid_updates, rejected_updates = _validate_updates(updates, policies)
+    
+    if not valid_updates:
+        state["negotiated_weights"] = None
+        state["current_step"] = "negotiation_failed"
+        return state
+
+    # Build negotiation items
+    negotiation_items = []
+    for u in valid_updates:
+        negotiation_items.append(
+            WeightNegotiationItem(
+                agent_id=u.agent_id,
+                sample_size=u.sample_size,
+                reliability_score=_agent_reliability(u.agent_id),
+                metrics=u.metrics or {}
+            )
+        )
+
+    neg_request = WeightNegotiationRequest(
+        round_id=round_id,
+        agents=negotiation_items
+    )
+
+    proposals = {}
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for u in valid_updates:
+            tasks.append(client.post(
+                f"{u.agent_id}/agent/negotiate/propose-weights",
+                json=neg_request.model_dump(mode="json"),
+                timeout=30.0
+            ))
+        
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, resp in enumerate(responses):
+            agent_id = valid_updates[i].agent_id
+            if isinstance(resp, Exception):
+                logger.error(f"Negotiation error from agent {agent_id}: {resp}")
+            elif resp.status_code == 200:
+                try:
+                    neg_resp = WeightNegotiationResponse(**resp.json())
+                    proposals[agent_id] = neg_resp.proposed_weights
+                    logger.info(f"Received weight negotiation proposal from agent {agent_id}: {neg_resp.proposed_weights}")
+                except Exception as e:
+                    logger.error(f"Invalid negotiation response schema from {agent_id}: {e}")
+            else:
+                logger.error(f"Agent {agent_id} negotiation failed with status {resp.status_code}: {resp.text}")
+
+    if len(proposals) < len(valid_updates) * 0.5:
+        logger.warning("Fewer than 50% of valid agents participated in negotiation. Bypassing peer-negotiation consensus.")
+        state["negotiated_weights"] = None
+        state["current_step"] = "negotiation_fallback"
+        return state
+
+    # Check standard deviation of weight proposals for each agent
+    agent_ids = [u.agent_id for u in valid_updates]
+    consensus_reached = True
+    tolerance = 0.15
+
+    def std_dev(values):
+        n = len(values)
+        if n <= 1:
+            return 0.0
+        mean = sum(values) / n
+        variance = sum((x - mean) ** 2 for x in values) / n
+        return variance ** 0.5
+
+    for target_agent in agent_ids:
+        proposed_vals = []
+        for proposer, proposed_w in proposals.items():
+            val = proposed_w.get(target_agent)
+            if val is not None:
+                proposed_vals.append(float(val))
+        
+        if len(proposed_vals) > 1:
+            std = std_dev(proposed_vals)
+            if std > tolerance:
+                logger.warning(f"Disagreement detected: weight proposals for agent {target_agent} have std dev {std:.4f} > tolerance {tolerance}")
+                consensus_reached = False
+                break
+
+    if consensus_reached:
+        final_weights = {}
+        for target_agent in agent_ids:
+            vals = [float(p.get(target_agent, 0.0)) for p in proposals.values() if target_agent in p]
+            final_weights[target_agent] = sum(vals) / len(vals) if vals else 1.0 / len(agent_ids)
+        
+        total_w = sum(final_weights.values())
+        if total_w > 0:
+            final_weights = {k: v / total_w for k, v in final_weights.items()}
+            
+        logger.info(f"Consensus weight negotiation succeeded! Final negotiated weights: {final_weights}")
+        state["negotiated_weights"] = final_weights
+        state["current_step"] = "negotiation_succeeded"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{POLICY_MANAGER_URL}/governance/agent",
+                    json={
+                        "agent_id": "coordinator",
+                        "active": True,
+                        "allowed_asset_types": ["CBDC"],
+                        "notes": f"Consensus weight negotiation succeeded for round {round_id} with weights: {final_weights}"
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"Failed to record governance event for successful negotiation: {e}")
+    else:
+        logger.warning("Weight negotiation consensus could not be reached due to diverging proposals. Falling back to central calculation.")
+        state["negotiated_weights"] = None
+        state["current_step"] = "negotiation_no_consensus"
+
+    return state
+
 async def aggregate_results(state: AgentState):
     logger.info("Aggregating results via Secure Aggregator")
     round_id = state["round_id"]
@@ -529,6 +668,7 @@ async def aggregate_results(state: AgentState):
         return state
 
     async with httpx.AsyncClient() as client:
+        negotiated = state.get("negotiated_weights") or {}
         agg_payload = {
             "round_id": round_id,
             "updates": [
@@ -543,6 +683,7 @@ async def aggregate_results(state: AgentState):
                     "protected_payload_sha256": u.protected_payload_sha256,
                     "encrypted_payload_sha256": u.encrypted_payload_sha256,
                     "reliability_score": _agent_reliability(u.agent_id),
+                    "negotiated_weight": negotiated.get(u.agent_id),
                 }
                 for u in valid_updates
             ],
@@ -594,13 +735,15 @@ workflow.add_node("fetch_global_policies", fetch_global_policies)
 workflow.add_node("select_agents", select_agents)
 workflow.add_node("trigger_training", trigger_training)
 workflow.add_node("wait_for_updates", wait_for_updates)
+workflow.add_node("negotiate_weights", negotiate_weights)
 workflow.add_node("aggregate_results", aggregate_results)
 
 workflow.set_entry_point("fetch_global_policies")
 workflow.add_edge("fetch_global_policies", "select_agents")
 workflow.add_edge("select_agents", "trigger_training")
 workflow.add_edge("trigger_training", "wait_for_updates")
-workflow.add_edge("wait_for_updates", "aggregate_results")
+workflow.add_edge("wait_for_updates", "negotiate_weights")
+workflow.add_edge("negotiate_weights", "aggregate_results")
 workflow.add_edge("aggregate_results", END)
 
 app_graph = workflow.compile()
@@ -661,12 +804,111 @@ async def start_round(round_id: str):
         "metrics": {},
         "policies": {},
         "selected_strategy": "FedAvg",
-        "current_step": "init"
+        "current_step": "init",
+        "negotiated_weights": None
     }
     
     # Run the agentic workflow
     final_state = await app_graph.ainvoke(initial_state)
     return {"status": "success", "final_state": final_state}
+
+@app.post("/consensus/propose-fraud-pattern")
+async def propose_fraud_pattern(proposal: FraudPatternProposal):
+    logger.info(f"Consensus proposal received: {proposal.proposal_id} ({proposal.pattern_name}) from proposer {proposal.proposer_id}")
+    active_agents = LOCAL_AGENT_URLS
+    
+    votes: List[ConsensusVote] = []
+    async with httpx.AsyncClient() as client:
+        tasks = []
+        for agent_url in active_agents:
+            if not agent_url:
+                continue
+            tasks.append(client.post(
+                f"{agent_url}/agent/consensus/evaluate-pattern",
+                json=proposal.model_dump(mode="json"),
+                timeout=30.0
+            ))
+        
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, resp in enumerate(responses):
+            agent_url = active_agents[i]
+            if isinstance(resp, Exception):
+                logger.error(f"Failed to get consensus vote from agent {agent_url}: {resp}")
+            elif resp.status_code == 200:
+                try:
+                    vote_resp = ConsensusVote(**resp.json())
+                    votes.append(vote_resp)
+                    logger.info(f"Agent {agent_url} voted: {vote_resp.vote} (Reason: {vote_resp.reason})")
+                except Exception as e:
+                    logger.error(f"Invalid vote response from agent {agent_url}: {e}")
+            else:
+                logger.error(f"Agent {agent_url} vote failed with status {resp.status_code}: {resp.text}")
+
+    if not votes:
+        raise HTTPException(status_code=502, detail="No active agents could evaluate the fraud pattern proposal")
+
+    approvals = sum(1 for v in votes if v.vote == "APPROVE")
+    rejections = sum(1 for v in votes if v.vote == "REJECT")
+    consensus_reached = approvals > (len(votes) / 2)
+
+    logger.info(f"Consensus summary for proposal {proposal.proposal_id}: Approvals={approvals}, Rejections={rejections}, Reached={consensus_reached}")
+
+    if consensus_reached:
+        async with httpx.AsyncClient() as client:
+            try:
+                policy_resp = await client.get(f"{POLICY_MANAGER_URL}/policies/global", timeout=30.0)
+                policy_resp.raise_for_status()
+                current_policies = policy_resp.json()
+            except Exception as e:
+                logger.warning(f"Failed to retrieve current policies, using empty defaults: {e}")
+                current_policies = {}
+
+            taxonomy = current_policies.get("fraud_taxonomy", [])
+            new_pattern = {
+                "proposal_id": proposal.proposal_id,
+                "pattern_name": proposal.pattern_name,
+                "feature_indicators": proposal.feature_indicators,
+                "rationale": proposal.rationale,
+                "proposer_id": proposal.proposer_id,
+                "approved_at": datetime.now(timezone.utc).isoformat()
+            }
+            taxonomy = [p for p in taxonomy if p.get("proposal_id") != proposal.proposal_id]
+            taxonomy.append(new_pattern)
+            current_policies["fraud_taxonomy"] = taxonomy
+
+            try:
+                update_resp = await client.post(
+                    f"{POLICY_MANAGER_URL}/policies/global",
+                    json={
+                        "policies": current_policies,
+                        "updated_by": f"consensus-{proposal.proposal_id[:8]}"
+                    },
+                    timeout=30.0
+                )
+                update_resp.raise_for_status()
+                logger.info("Successfully updated global fraud taxonomy in Policy Manager")
+            except Exception as e:
+                logger.error(f"Failed to update policies in Policy Manager: {e}")
+                raise HTTPException(status_code=502, detail="Failed to store approved fraud taxonomy update")
+
+        return {
+            "status": "approved",
+            "consensus_reached": True,
+            "approvals": approvals,
+            "rejections": rejections,
+            "votes": [v.model_dump(mode="json") for v in votes],
+            "proposal": proposal.model_dump(mode="json")
+        }
+    else:
+        return {
+            "status": "rejected",
+            "consensus_reached": False,
+            "approvals": approvals,
+            "rejections": rejections,
+            "votes": [v.model_dump(mode="json") for v in votes],
+            "proposal": proposal.model_dump(mode="json")
+        }
+
 
 if __name__ == "__main__":
     import uvicorn

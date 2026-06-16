@@ -50,10 +50,10 @@ bash scripts/local_minikube_release.sh --tag local-manual-001 --profile minikube
 To open the dashboard after deployment:
 
 ```bash
-kubectl port-forward svc/fraud-dashboard 3000:3000
+kubectl port-forward svc/fraud-dashboard 3001:3001
 ```
 
-Then browse to `http://127.0.0.1:3000`.
+Then browse to `http://127.0.0.1:3001`.
 
 The dashboard now proxies its own upstream API and WebSocket requests, so you do not need separate localhost port-forwards for `local-agent`, `transaction-graph`, or `alerting` just to use the UI.
 

@@ -115,7 +115,7 @@ graph TB
 | 6 | **Local GNN** | GNN training & inference | 9002 | REST |
 | 7 | **Privacy Layer** | DP + Encryption | 9003 | REST |
 | 8 | **Transaction Graph** | Graph construction + CDC | 9004 | REST + CDC |
-| 9 | **Fraud Dashboard** | Monitoring UI | 3000 | HTTP/REST |
+| 9 | **Fraud Dashboard** | Monitoring UI | 3001 | HTTP/REST |
 | 10 | **Alerting** | Email/Ticket notifications | 9005 | Kafka |
 
 ---
@@ -410,7 +410,7 @@ dependencies:
 ```yaml
 service: fraud-dashboard
 domain: bank-node
-port: 3000
+port: 3001
 protocol: HTTP
 technology:
   - React.js / Next.js

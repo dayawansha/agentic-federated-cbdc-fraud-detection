@@ -13,7 +13,8 @@ dependencies = [
     "langgraph>=0.0.10",
     "confluent-kafka>=2.1.0",
     "redis>=4.5.0",
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+    "torch>=2.0.0"
 ]
 
 [build-system]

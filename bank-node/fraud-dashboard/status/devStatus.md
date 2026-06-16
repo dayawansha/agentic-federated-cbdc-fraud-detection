@@ -9,7 +9,7 @@
 ## Technical Specifications
 - **Service Name:** fraud-dashboard
 - **Domain:** bank-node
-- **Port:** 3000
+- **Port:** 3001
 - **Protocol:** HTTP / WebSocket
 
 ---

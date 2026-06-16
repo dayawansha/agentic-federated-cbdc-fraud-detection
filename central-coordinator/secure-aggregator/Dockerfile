@@ -20,7 +20,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         "fastapi>=0.100.0" \
         "uvicorn>=0.23.0" \
         "pydantic>=2.0.0" \
-        "python-dotenv>=1.0.0"
+        "python-dotenv>=1.0.0" \
+        "cryptography>=41.0.0"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-deps .

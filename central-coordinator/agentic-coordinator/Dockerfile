@@ -10,6 +10,11 @@ COPY central-coordinator/agentic-coordinator/src/ ./src/
 ENV PIP_DEFAULT_TIMEOUT=19000
 
 RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+        torch \
+        --index-url https://download.pytorch.org/whl/cpu
+
+RUN --mount=type=cache,target=/root/.cache/pip \
     pip install .
 
 # Copy shared modules

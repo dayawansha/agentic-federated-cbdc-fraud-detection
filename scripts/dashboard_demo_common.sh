@@ -93,7 +93,7 @@ dashboard_demo_start_transaction_graph_port_forward() {
 
 dashboard_demo_start_dashboard_port_forward() {
   echo "Starting fraud-dashboard port-forward on localhost:${DASHBOARD_PORT}..."
-  dashboard_demo_start_port_forward "${FRAUD_DASHBOARD_SERVICE}" "${DASHBOARD_PORT}:3000" "http://127.0.0.1:${DASHBOARD_PORT}/"
+  dashboard_demo_start_port_forward "${FRAUD_DASHBOARD_SERVICE}" "${DASHBOARD_PORT}:3001" "http://127.0.0.1:${DASHBOARD_PORT}/"
 }
 
 dashboard_demo_ensure_topic() {

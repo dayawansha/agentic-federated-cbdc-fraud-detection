@@ -23,7 +23,7 @@ class LocalTrainer:
         # Only train on nodes with known labels (class 1 and 2)
         # In Elliptic dataset, class 3 is unknown
         mask = (data.y == 0) | (data.y == 1) # Assuming labels mapped to 0, 1
-        class_weights = self._compute_class_weights(data.y[mask])
+        class_weights = self._compute_class_weights(data.y[mask], num_classes=out.shape[1])
         loss = F.nll_loss(out[mask], data.y[mask], weight=class_weights)
         loss.backward()
         self.optimizer.step()
@@ -73,9 +73,9 @@ class LocalTrainer:
             "labeled_samples": float(labeled_count),
         }
 
-    def _compute_class_weights(self, labels):
+    def _compute_class_weights(self, labels, num_classes=2):
         label_tensor = labels.detach()
-        counts = torch.bincount(label_tensor, minlength=2).float()
+        counts = torch.bincount(label_tensor, minlength=num_classes).float()
         counts = torch.clamp(counts, min=1.0)
         weights = counts.sum() / (counts * counts.numel())
         return weights.to(self.device)

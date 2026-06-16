@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,9 +13,12 @@
       color: #1f2937;
       background: #f8fafc;
     }
-    h1, h2 {
+
+    h1,
+    h2 {
       color: #111827;
     }
+
     .note {
       background: #eff6ff;
       border: 1px solid #bfdbfe;
@@ -22,26 +26,33 @@
       border-radius: 8px;
       margin-bottom: 20px;
     }
+
     table {
       border-collapse: collapse;
       width: 100%;
       background: #ffffff;
     }
-    th, td {
+
+    th,
+    td {
       border: 1px solid #d1d5db;
       padding: 10px 12px;
       text-align: left;
     }
+
     th {
       background: #e5e7eb;
     }
+
     a {
       color: #1d4ed8;
       text-decoration: none;
     }
+
     a:hover {
       text-decoration: underline;
     }
+
     code {
       background: #e5e7eb;
       padding: 2px 6px;
@@ -49,6 +60,7 @@
     }
   </style>
 </head>
+
 <body>
   <h1>API / Kafka Access Index</h1>
 
@@ -61,6 +73,26 @@
     If you already started the full stack with <code>bash scripts/all_in_one_minikube.sh up --start-minikube</code>,
     these API and Kafka UI endpoints may already be available through the managed port-forwards.
   </div>
+
+  <h2>Frontend Dashboard</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Service</th>
+        <th>Kubernetes Service</th>
+        <th>Port</th>
+        <th>URL</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Fraud Dashboard</td>
+        <td><code>fraud-dashboard</code></td>
+        <td>3001</td>
+        <td><a href="http://localhost:3001/">http://localhost:3001/</a></td>
+      </tr>
+    </tbody>
+  </table>
 
   <h2>REST API Services</h2>
   <table>
@@ -140,13 +172,29 @@
     </tbody>
   </table>
 
-  <h2>Notes</h2>
-  <p>These Swagger pages are live views from the running services, not static exported specs.</p>
-  <p><code>fraud-dashboard</code> is the Fraud Dashboard frontend and does not expose Swagger UI.</p>
-
   <h2>Kafka UI</h2>
-  <p>Run <code>bash doc/ApiSpec/port-forward-kafka-ui.sh</code> first, then open the Kafka UI URL printed by the script. It defaults to <a href="http://127.0.0.1:18080">http://127.0.0.1:18080</a>, but it may automatically use the next free local port if <code>18080</code> is already in use.</p>
-  <p>If you started the platform with <code>bash scripts/all_in_one_minikube.sh up --start-minikube</code>, Kafka UI is exposed at <a href="http://127.0.0.1:8080">http://127.0.0.1:8080</a>.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Deployment Mode / Scenario</th>
+        <th>Command to Run</th>
+        <th>Kafka UI URL</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Full Stack (All-in-one Minikube setup)</td>
+        <td><code>bash scripts/all_in_one_minikube.sh up</code></td>
+        <td><a href="http://127.0.0.1:8080">http://127.0.0.1:8080</a></td>
+      </tr>
+      <tr>
+        <td>Manual helper script (Independent run)</td>
+        <td><code>bash doc/ApiSpec/port-forward-kafka-ui.sh</code></td>
+        <td><a href="http://127.0.0.1:18080">http://127.0.0.1:18080</a></td>
+      </tr>
+    </tbody>
+  </table>
+  <br>
 
   <table>
     <thead>
@@ -175,6 +223,9 @@
     </tbody>
   </table>
 
-  <p><code>kafka-ui</code> exposes this dashboard. <code>transactions.events</code> is produced by <code>transaction-graph</code>. <code>fraud.alerts</code> is used by <code>alerting</code>.</p>
+  <p><code>kafka-ui</code> exposes this dashboard. <code>transactions.events</code> is produced by
+    <code>transaction-graph</code>. <code>fraud.alerts</code> is used by <code>alerting</code>.
+  </p>
 </body>
+
 </html>

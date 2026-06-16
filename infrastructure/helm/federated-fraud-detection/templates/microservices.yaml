@@ -62,7 +62,7 @@ spec:
             - name: MODEL_REGISTRY_URL
               value: "http://model-registry:8004"
 {{- end }}
-{{- if or (eq $name "secureAggregator") (eq $name "privacyLayer") }}
+{{- if or (eq $name "secureAggregator") (eq $name "privacyLayer") (eq $name "policyManager") }}
             - name: PRIVACY_KEY_SEED
               value: "federated-fraud-shared-transport-key"
 {{- end }}

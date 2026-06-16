@@ -79,6 +79,7 @@ class AggregationItem(BaseModel):
     metrics: Dict[str, float] = {}
     privacy_applied: bool = False
     encryption_applied: bool = False
+    negotiated_weight: Optional[float] = None
 
 class AggregateRequest(BaseModel):
     round_id: str
@@ -142,12 +143,18 @@ async def aggregate(request: AggregateRequest) -> AggregateResponse:
         if request.strategy not in {"FedAvg", "WeightedFedAvg"}:
             raise HTTPException(status_code=400, detail=f"Unsupported aggregation strategy: {request.strategy}")
 
-        aggregation_weights = [float(size) for size in sample_sizes]
-        if request.strategy == "WeightedFedAvg":
+        if any(u.negotiated_weight is not None for u in request.updates):
             aggregation_weights = [
-                float(size) * max(0.1, float(update.reliability_score))
-                for update, size in zip(request.updates, sample_sizes)
+                float(u.negotiated_weight if u.negotiated_weight is not None else 0.0)
+                for u in request.updates
             ]
+        else:
+            aggregation_weights = [float(size) for size in sample_sizes]
+            if request.strategy == "WeightedFedAvg":
+                aggregation_weights = [
+                    float(size) * max(0.1, float(update.reliability_score))
+                    for update, size in zip(request.updates, sample_sizes)
+                ]
 
         aggregated_bytes = SecureAggregator.federated_averaging(model_updates, aggregation_weights)
         if request.noise_multiplier and request.noise_multiplier > 0:

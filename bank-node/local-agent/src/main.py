@@ -15,6 +15,14 @@ import httpx
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 
+from shared.schemas.models import (
+    WeightNegotiationRequest,
+    WeightNegotiationResponse,
+    FraudPatternProposal,
+    ConsensusVote,
+    WeightNegotiationItem,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -454,6 +462,83 @@ async def start_local_round(round_id: str, agent_id: str):
             "metrics": final_state.get("metrics", {}),
         },
     }
+
+@app.post("/agent/negotiate/propose-weights", response_model=WeightNegotiationResponse)
+async def propose_weights(request: WeightNegotiationRequest):
+    logger.info(f"Local Agent negotiating weights for round {request.round_id}")
+    proposed_weights = {}
+    scores = {}
+    for agent in request.agents:
+        f1 = agent.metrics.get("f1_score", 0.8)
+        if f1 is None:
+            f1 = 0.8
+        f1 = max(0.01, min(1.0, float(f1)))
+        
+        reliability = agent.reliability_score
+        if reliability is None:
+            reliability = 1.0
+        reliability = max(0.1, min(1.0, float(reliability)))
+        
+        sample_size = agent.sample_size
+        if sample_size is None or sample_size < 1:
+            sample_size = 1
+            
+        scores[agent.agent_id] = float(sample_size) * f1 * reliability
+
+    total_score = sum(scores.values())
+    for agent_id, score in scores.items():
+        proposed_weights[agent_id] = score / total_score if total_score > 0 else 1.0 / len(request.agents)
+
+    my_id = str(agent_status.get("agent_id", "local-agent"))
+    return WeightNegotiationResponse(agent_id=my_id, proposed_weights=proposed_weights)
+
+
+@app.post("/agent/consensus/evaluate-pattern", response_model=ConsensusVote)
+async def evaluate_pattern(proposal: FraudPatternProposal):
+    logger.info(f"Local Agent evaluating fraud pattern proposal {proposal.proposal_id} ({proposal.pattern_name})")
+    vote = "APPROVE"
+    reason = "All pattern indicators are within valid statistical and structural ranges"
+    
+    for key, val in proposal.feature_indicators.items():
+        val = float(val)
+        if "ratio" in key or "score" in key or "probability" in key or "percent" in key:
+            if val < 0.0 or val > 1.0:
+                vote = "REJECT"
+                reason = f"Indicator {key} value {val} is out of bounds [0, 1]"
+                break
+        if "threshold" in key or "velocity" in key or "count" in key:
+            if val < 0.0:
+                vote = "REJECT"
+                reason = f"Indicator {key} value {val} cannot be negative"
+                break
+                
+    my_id = str(agent_status.get("agent_id", "local-agent"))
+    return ConsensusVote(agent_id=my_id, proposal_id=proposal.proposal_id, vote=vote, reason=reason)
+
+
+@app.post("/agent/consensus/propose-pattern")
+async def propose_pattern(proposal_data: dict):
+    proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
+    my_id = str(agent_status.get("agent_id", "local-agent"))
+    proposal = FraudPatternProposal(
+        proposal_id=proposal_id,
+        proposer_id=my_id,
+        pattern_name=proposal_data.get("pattern_name", "Unknown Pattern"),
+        feature_indicators=proposal_data.get("feature_indicators", {}),
+        rationale=proposal_data.get("rationale", "No rationale provided")
+    )
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(f"{COORDINATOR_URL}/consensus/propose-fraud-pattern", json=proposal.model_dump(mode="json"), timeout=60.0)
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        except Exception as e:
+            logger.error(f"Failed to propose pattern to coordinator: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
