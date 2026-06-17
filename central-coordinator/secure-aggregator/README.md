@@ -6,12 +6,23 @@ Federated model parameters aggregation (FedAvg, WeightedFedAvg), secure decrypti
 - **`8002`** (REST API)
 
 ## Service Responsibilities
-The `secure-aggregator` is a high-performance computation microservice responsible for merging locally trained GNN model weights into a singular global model.
+The `secure-aggregator` is the **merging engine (math brain)** of the system. It combines all the separate models trained by individual banks into a single, improved global model.
 
-- **Federated Averaging**: Performs standard PyTorch-level `FedAvg` or custom `WeightedFedAvg` which scales client updates based on dataset sample sizes and node reliability scores.
-- **Secure Payload Decryption**: Decrypts incoming encrypted weights using a symmetric transport cipher, validating SHA-256 hash commitments (both protected and encrypted) to protect against transport tampering.
-- **Differential Privacy Addition**: Injectively overlays Gaussian noise onto the final aggregated global state dict according to the specified noise multiplier (ε-DP scaling).
-- **Metric Consolidation**: Synthesizes local evaluation metrics (F1-score, AUC-ROC, accuracy, recall, precision) into weighted global performance metrics.
+1. **Merging Model Weights (Federated Averaging)**
+   - **What it does:** Combines individual AI models from various banks into one master model.
+   - **How it works:** It uses algorithms like standard `FedAvg` or `WeightedFedAvg`. In `WeightedFedAvg`, it gives more weight/importance to updates from banks that trained on larger datasets or have a higher reliability score.
+
+2. **Secure Decryption & Tamper Checking**
+   - **What it does:** Unlocks the incoming model weights securely and checks that they were not altered during transmission.
+   - **How it works:** It decrypts the incoming model payload using secure keys and verifies SHA-256 checksums to make sure the data wasn't tampered with while traveling over the network.
+
+3. **Adding Global Privacy Noise (Differential Privacy)**
+   - **What it does:** Injects a final layer of safety noise to the merged model so no one can extract details about individual banks' datasets from it.
+   - **How it works:** It adds random Gaussian noise to the aggregated global model parameters according to the system's global privacy limits.
+
+4. **Consolidating Performance Metrics**
+   - **What it does:** Summarizes how well the model is performing at detecting fraud across all banks.
+   - **How it works:** It takes individual banks' performance stats (accuracy, F1-score, precision, recall) and calculates a weighted average to produce a single set of global performance metrics.
 
 ---
 

@@ -6,13 +6,27 @@ Kafka consumer for real-time fraud events, WebSocket event broadcaster, SMTP ema
 - **`9005`** (REST API & WebSockets)
 
 ## Service Responsibilities
-The `alerting` service consumes fraud alerts published by the system's inference engines, processes them, and broadcasts them to operational queues and dashboards.
+The `alerting` service is the **alarm system (communicator)** of the bank node. It listens for fraud signals from the GNN AI engine and distributes warnings to the security team and dashboards.
 
-- **Kafka Consumer Loop**: Listens continuously to the `fraud.alerts` topic, deserializing transaction details, confidence scores, and origin bank nodes.
-- **Real-Time Streaming**: Implements WebSocket endpoints to push live fraud notifications directly to frontend monitors (`fraud-dashboard`).
-- **SMTP Email Notifications**: Dispatches formatted HTML/Plaintext warning emails to security teams when SMTP parameters are configured.
-- **Ticketing & Webhook Dispatch**: Translates alert events into HTTP payloads and fires them at target external endpoints (e.g. Jira, Slack, PagerDuty, or custom bank ops tools) with customizable authorization headers.
-- **Alert Buffering**: Holds an in-memory ring buffer of the most recent fraud alerts for quick search retrieval.
+1. **Listening for Alarms (Kafka Consumer Loop)**
+   - **What it does:** Monitors the system's message queue for any new fraud predictions.
+   - **How it works:** It listens to the `fraud.alerts` Kafka stream, instantly catching transaction details, security confidence scores, and origin bank details.
+
+2. **Broadcasting Live Updates (Real-Time Streaming)**
+   - **What it does:** Pushes live alerts to operator dashboards so they pop up immediately on screen.
+   - **How it works:** It uses WebSockets to establish a continuous connection, pushing alerts to the `fraud-dashboard` without the UI needing to refresh.
+
+3. **Sending Warning Emails (SMTP Email Notifications)**
+   - **What it does:** Alerts the security operations team via email when critical fraud is detected.
+   - **How it works:** It formats a message detailing the suspicious transaction and emails it to security administrators using standard SMTP protocols.
+
+4. **Triggering External Systems (Ticketing & Webhook Dispatch)**
+   - **What it does:** Reports fraud events to external bank systems (like Slack channels, Jira boards, or PagerDuty schedules).
+   - **How it works:** It sends secure HTTP webhooks containing transaction summaries to designated third-party API addresses.
+
+5. **Storing Recent History (Alert Buffering)**
+   - **What it does:** Keeps a list of the latest alerts handy for quick review.
+   - **How it works:** It maintains a short in-memory buffer of recent alerts so operators can quickly search or filter them.
 
 ---
 

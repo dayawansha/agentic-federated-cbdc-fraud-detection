@@ -6,13 +6,27 @@ Visual operational monitor, real-time alert feed interface, and federated traini
 - **`3001`** (Served via Nginx / Node.js development server)
 
 ## Service Responsibilities
-The `fraud-dashboard` is the graphical user interface (GUI) of the system, designed to give operators a live, unified overview of threat intelligence and training progress across the network.
+The `fraud-dashboard` is the **dashboard (control screen)** of the system. It is the visual website/interface that bank operators use to see live fraud alerts and watch the training metrics.
 
-- **Real-Time Alert Feed**: Establishes a persistent WebSocket connection to the `Alerting` service, displaying new fraud detections instantly with details on sender/receiver accounts, bank of origin, transaction amounts, and GNN confidence scores.
-- **Interactive Graph Visualizer**: Renders transactional network structures, allowing operators to trace payment chains, inspect specific account features, and visualize GNN-classified illicit paths.
-- **Service Status Dashboard**: Periodically queries `/health` endpoints of all coordination and node microservices, indicating cluster-wide operational health in a traffic-light view.
-- **Training Round Console**: Displays active federated learning rounds, tracking agent participation, validation metrics, and privacy budget sweeps.
-- **Operator Tooling Integration**: Embeds quick-links to monitoring utilities, including pgAdmin and the Kafka UI.
+1. **Live Alert Feed (Real-Time Alert Feed)**
+   - **What it does:** Displays new fraud alerts on the screen as soon as they are detected.
+   - **How it works:** It connects to the `Alerting` service via WebSockets, receiving push-notifications of suspicious transactions, sender/receiver details, and the AI's confidence score.
+
+2. **Network Map Visualizer (Interactive Graph Visualizer)**
+   - **What it does:** Shows a visual map of how money flows between accounts to help operators trace fraud rings.
+   - **How it works:** It draws the transaction connections using charting/network libraries, highlighting paths that the GNN AI flagged as illicit or structuring loops.
+
+3. **System Health Check (Service Status Dashboard)**
+   - **What it does:** Shows a green/red checklist of whether all services are online and working.
+   - **How it works:** It regularly asks the `/health` endpoints of all services (like Neo4j, Kafka, and the coordinator services) to check if they are running.
+
+4. **Federated Training Monitor (Training Round Console)**
+   - **What it does:** Displays progress charts of the federated learning rounds.
+   - **How it works:** It pulls records from the coordinator to show how many rounds have run, which banks took part, their accuracy scores, and how much privacy limit has been used.
+
+5. **Shortcut Links (Operator Tooling Integration)**
+   - **What it does:** Provides quick shortcuts to admin dashboards (like the Kafka console and PostgreSQL admin).
+   - **How it works:** It embeds links directly inside the navigation bar so administrators can quickly manage the databases and message queues.
 
 ---
 

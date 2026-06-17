@@ -1,27 +1,41 @@
 # Policy Manager
 
-Governance, compliance auditing, privacy budget enforcement (ε, δ), and secure aggregation mask tracking.
+Governance, compliance auditing, privacy limit enforcement (ε, δ), and secure aggregation mask tracking.
 
 ## Port
 - **`8003`** (REST API)
 
 ## Service Responsibilities
-The `policy-manager` acts as the system's compliance and security guard, regulating interactions based on strict privacy bounds and logging administrative decisions.
+The `policy-manager` acts as the system's compliance officer and security guard. It enforces privacy boundaries, manages system settings, monitors bank node health, and keeps a detailed audit trail of all coordination events.
 
-- **Privacy Budget Management**: Enforces Differential Privacy limits per bank node. Deducts used budget (ε, δ) following training rounds, and rejects participation if a node's cumulative budget exceeds maximum thresholds.
-- **System Governance**: Stores global coordination configuration parameters including minimum participation ratio, default noise multiplier, and model validation thresholds.
-- **Node Lifecycle & Reliability**: Manages node status registrations (active/inactive) and updates reliability scores dynamically based on communication latency and participation completion metrics.
-- **Audit Logging**: Logs immutable security events (registrations, budget updates, policy changes, aggregation rounds) to database tables for compliance tracking.
-- **Secure Aggregation Coordination**: Manages the multi-party computation (MPC) mask database. Collects mask shares from participating nodes and computes the cumulative zero-sum masks required by the aggregator.
+1. **Privacy Protection (Privacy Limit Management)**
+   - **What it does:** Ensures that no bank leaks sensitive, private customer data during the AI training process.
+   - **How it works:** Every time a bank trains the AI model, a small amount of the allowed "privacy limit" (measured using parameters called Epsilon $\epsilon$ and Delta $\delta$) is consumed. The Policy Manager tracks this usage and blocks any bank that is exceeding its limit to prevent data leaks.
+
+2. **Setting System Rules (System Governance)**
+   - **What it does:** Stores and manages the global settings for how the system operates.
+   - **How it works:** It controls system-wide settings, such as the minimum number of banks required to start a training round and the quality/accuracy targets the AI models must meet.
+
+3. **Monitoring Bank Reliability (Node Lifecycle & Reliability)**
+   - **What it does:** Keeps track of which banks are actively participating and how reliable they are.
+   - **How it works:** It registers new bank nodes when they join. If a bank node is slow, has poor internet connection, or fails to complete its tasks, the Policy Manager lowers its reliability score.
+
+4. **Keeping a Permanent Log Book (Audit Logging)**
+   - **What it does:** Records a detailed history of everything that happens for compliance and security audits.
+   - **How it works:** It writes down critical events (such as when a new bank registers, when policies change, or when privacy limits are adjusted) to a database so there is an untampered paper trail.
+
+5. **Coordinating Secret Keys (Secure Aggregation Coordination)**
+   - **What it does:** Helps blend everyone's AI models together securely without letting the coordinator see any bank's individual data.
+   - **How it works:** Banks hide their local updates using mathematical "masks" (like temporary passwords). The Policy Manager collects pieces of these masks and combines them so that the coordinator can decrypt the final merged model without ever being able to decrypt any individual bank's model.
 
 ---
 
 ## API Endpoints
 
-### 1. Privacy Budgets
-- `GET /policies/budget/{agent_id}`: Fetches the current and maximum privacy budget (Epsilon, Delta) for an agent.
+### 1. Privacy Limits
+- `GET /policies/budget/{agent_id}`: Fetches the current and maximum privacy limit (Epsilon, Delta) for an agent.
 - `POST /policies/budget/update`: Subtracts Epsilon/Delta usage for an agent after a round.
-- `POST /policies/budget/set`: Initializes or forces a custom budget config for an agent.
+- `POST /policies/budget/set`: Initializes or forces a custom privacy limit config for an agent.
 
 ### 2. Global Policies
 - `GET /policies/global`: Fetches current system-wide policies.

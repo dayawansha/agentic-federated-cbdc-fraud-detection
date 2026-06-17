@@ -6,12 +6,23 @@ Model lineage tracking, evaluation metrics registry, and PyTorch model weight ar
 - **`8004`** (REST API)
 
 ## Service Responsibilities
-The `model-registry` service manages the ML model repository, storing training weights, validation metrics, and version identifiers for historical auditing and rollbacks.
+The `model-registry` is the **librarian (archive cabinet)** of the AI models. It keeps track of every version of the GNN fraud-detection model, its accuracy stats, and its physical files.
 
-- **Model Registration**: Processes registrations of newly trained global or local models. Generates unique version strings and stamps records with UTC timestamps.
-- **Weight Serialization & Disk Storage**: Receives raw model weights (base64 encoded), decodes them, and writes them to persistent storage (`ARTIFACT_DIR`) as PyTorch `.pt` files.
-- **Lineage and Metadata Tracking**: Persists evaluation metrics (accuracy, F1-score, precision, recall, AUC-ROC) along with model scopes (`is_global` flags) in PostgreSQL database tables.
-- **Retrieval Interfaces**: Exposes simple endpoints to download model checkpoints, query metadata catalogs, and serve binary weights to orchestrating pipelines or agents.
+1. **Registering Models (Model Registration)**
+   - **What it does:** Catalogues and saves new AI models as they are created during the training rounds.
+   - **How it works:** It generates a unique version name (like a stamp) and records the exact time the model was created.
+
+2. **Saving Model Files (Weight Serialization & Disk Storage)**
+   - **What it does:** Receives the AI learnings (model weights) and saves them onto the disk.
+   - **How it works:** It decodes the incoming model data (sent as base64) and writes it as a PyTorch binary file (`.pt`) in a persistent folder.
+
+3. **Tracking History & Quality (Lineage and Metadata Tracking)**
+   - **What it does:** Remembers the quality metrics of every model so you can compare them or revert to a previous version if a new one performs poorly.
+   - **How it works:** It writes stats like accuracy, loss, and F1-score, along with whether the model is a central global model or a bank-specific update, into the PostgreSQL database.
+
+4. **Serving Models (Retrieval Interfaces)**
+   - **What it does:** Provides the model files and performance records to other parts of the system when requested.
+   - **How it works:** It exposes endpoints to download specific model weights so bank nodes can pull the latest version to start a new training round.
 
 ---
 

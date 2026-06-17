@@ -6,12 +6,23 @@ Graph database interface, feature engineering, and CDC streaming for real-time t
 - **`9004`** (REST API)
 
 ## Service Responsibilities
-The `transaction-graph` service provides the relational database layer for bank-node operations, structuring flat transaction ledgers into graph networks of accounts and payments.
+The `transaction-graph` is the **data structure manager (graph builder)** of the bank node. It converts standard flat transaction records into interconnected network maps (graphs) and stores them.
 
-- **Graph Database Construction**: Manages connections to the local Neo4j database, inserting accounts as nodes and transfers as directed `TRANSACTED` edges.
-- **Dynamic Feature Engineering**: Computes local graph statistics for accounts (in-degree, out-degree, transaction counts, cumulative values, first/last transaction timestamps) to feed GNN feature matrices.
-- **Real-Time Data Ingestion**: Consumes new transaction records via REST requests or Kafka events (facilitating Change Data Capture - CDC pipelines), updating the graph topology in real time.
-- **Subgraph Extraction**: Offers structural subgraph queries (limiting paths by depth or node counts) to support neighborhood-based GNN inference.
+1. **Building the Transaction Map (Graph Database Construction)**
+   - **What it does:** Organizes customer accounts and payments into an interconnected graph structure.
+   - **How it works:** It writes data to the local Neo4j database, representing bank accounts as "nodes" (circles) and payments/transfers as "edges" (arrows connecting the circles).
+
+2. **Calculating Account Patterns (Dynamic Feature Engineering)**
+   - **What it does:** Calculates mathematical metrics about how each account interacts in the network.
+   - **How it works:** It measures details like how many accounts send money to an account (in-degree), how many receive money (out-degree), total amount sent, and transaction speeds, which are then used as input features by the GNN model.
+
+3. **Real-Time Ingestion (Change Data Capture)**
+   - **What it does:** Ingests new transaction entries instantly into the graph map as they happen.
+   - **How it works:** It receives new transactions via REST APIs or Kafka event streams and updates the Neo4j database in real time.
+
+4. **Extracting Transaction Neighborhoods (Subgraph Extraction)**
+   - **What it does:** Extracts a small portion of the transaction network map around a specific account.
+   - **How it works:** It queries the database to extract adjacent accounts up to a certain depth (e.g., connections within 2 hops) to help the GNN analyze localized transaction patterns.
 
 ---
 

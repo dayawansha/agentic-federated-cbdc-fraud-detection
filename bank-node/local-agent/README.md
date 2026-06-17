@@ -6,12 +6,23 @@ Autonomous bank-node coordinator executing local training workflows, privacy pro
 - **`9001`** (REST API)
 
 ## Service Responsibilities
-The `local-agent` acts as the coordinator's local counterpart inside each bank node, controlling training triggers, executing security pipelines, and participating in peer-to-peer voting protocols.
+The `local-agent` is the **local manager (supervisor)** of the bank node. It controls the local tasks inside the bank and communicates with the central coordinator.
 
-- **Autonomous Round Workflow**: Runs a LangGraph-driven local training cycle: checks data availability, pulls the latest global model weights from the Model Registry, triggers the GNN for local training, requests Differential Privacy and masking, and posts the final secure update to the Coordinator.
-- **Weight Negotiation**: Negotiates training weight allocations based on local dataset sizes, validation F1-scores, and node reliability ratings, ensuring fair contribution mapping.
-- **Consensus & Pattern Evaluation**: Evaluates fraud pattern rules broadcasted by the central coordinator. Inspects statistical ranges (indicator thresholds, transaction velocity, error ratios) and submits automated votes (APPROVE/REJECT).
-- **Inference Monitoring**: Aggregates local GNN inference predictions, tracking threat alarms and exporting alerts to the Alerting system.
+1. **Running the Local Training Cycle (Autonomous Round Workflow)**
+   - **What it does:** Runs the step-by-step training process inside the bank.
+   - **How it works:** It verifies if the bank's transaction database has data ready, downloads the latest global model from the central registry, tells the GNN to start training, requests the privacy layer to scramble the updates, and submits the finished payload to the coordinator.
+
+2. **Negotiating Training Weights (Weight Negotiation)**
+   - **What it does:** Negotiates how much influence this bank's model updates should have on the global model.
+   - **How it works:** It evaluates this bank's dataset size, its AI accuracy (F1-score), and how reliable it has been in the past, suggesting a fair weighting coefficient for the upcoming merging process.
+
+3. **Voting on System Rules (Consensus & Pattern Evaluation)**
+   - **What it does:** Evaluates proposals for new fraud patterns and decides whether this bank should approve them.
+   - **How it works:** It inspects proposed rules (like maximum transaction speeds or warning flags) against its local databases and submits an automated vote (APPROVE or REJECT).
+
+4. **Monitoring Alarms (Inference Monitoring)**
+   - **What it does:** Collects and processes warning flags raised by the local AI engine.
+   - **How it works:** It gathers recent fraud predictions made by the local GNN model and forwards them to the local Alerting system.
 
 ---
 

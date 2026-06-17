@@ -5,13 +5,24 @@ LangGraph-based coordination engine for federated training rounds, cross-service
 ## Port
 - **`8001`** (REST API)
 
-## Service Architecture & Responsibilities
-The `agentic-coordinator` sits at the center of the federated system, orchestrating transactions and state transfers between coordinate groups and local bank nodes.
+## Service Responsibilities
+The `agentic-coordinator` is the **conductor (brain)** of the entire federated system. It runs the orchestrator that coordinates the steps between all the central services and the individual bank nodes.
 
-- **Federated Round Orchestration**: Manages the step-by-step lifecycle of federated training. Initiates rounds, tracks expected node responses, and enforces timeouts.
-- **SAGA Orchestration Pattern**: Implements a distributed SAGA pattern using LangGraph to ensure robust rollback or compensation steps if a node fails during training, policy evaluation, or model aggregation.
-- **Consensus & Threat Intelligence**: Orchestrates decentralized voting/negotiations on global variables, such as shared threat indicators or collaborative fraud pattern identification.
-- **Service Integration**: Communicates directly with the `Secure Aggregator`, `Policy Manager`, and `Model Registry`, as well as `Local Agent` endpoints on individual bank nodes.
+1. **Managing Training Rounds (Federated Round Orchestration)**
+   - **What it does:** Runs the training round from start to finish, ensuring everything happens in the right order.
+   - **How it works:** It starts a round, alerts the bank nodes to train, collects their updates, handles timeouts if a bank is slow, and triggers the merging process.
+
+2. **Handling System Failures (SAGA Orchestration Pattern)**
+   - **What it does:** Ensures that if something goes wrong during a training round, the system recovers cleanly without corrupting any data.
+   - **How it works:** It uses a state machine workflow (LangGraph) that detects node or communication failures and triggers compensation/rollback actions (like discarding failed updates).
+
+3. **Voting on Fraud Patterns (Consensus & Threat Intelligence)**
+   - **What it does:** Allows banks to collectively vote on new fraud patterns and share threat information.
+   - **How it works:** It manages a decentralized voting protocol where a bank can propose a fraud pattern, other banks vote on its validity, and the system records the result once a consensus is reached.
+
+4. **Service Integration**
+   - **What it does:** Acts as the communication bridge between all central and local services.
+   - **How it works:** It talks directly to the Secure Aggregator, Policy Manager, Model Registry, and the individual Bank Nodes to route requests, model weights, and mask keys.
 
 ---
 
