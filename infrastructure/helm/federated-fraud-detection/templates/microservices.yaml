@@ -55,14 +55,14 @@ spec:
 {{- if eq $name "agenticCoordinator" }}
             - name: LOCAL_AGENT_URLS
               value: "http://local-agent:9001"
-            - name: SECURE_AGGREGATOR_URL
-              value: "http://secure-aggregator:8002"
+            - name: FEDERATED_MODEL_AGGREGATOR_URL
+              value: "http://federated-model-aggregator:8002"
             - name: POLICY_MANAGER_URL
               value: "http://policy-manager:8003"
             - name: MODEL_REGISTRY_URL
               value: "http://model-registry:8004"
 {{- end }}
-{{- if or (eq $name "secureAggregator") (eq $name "privacyLayer") (eq $name "policyManager") }}
+{{- if or (eq $name "federatedModelAggregator") (eq $name "privacyLayer") (eq $name "policyManager") }}
             - name: PRIVACY_KEY_SEED
               value: "federated-fraud-shared-transport-key"
 {{- end }}

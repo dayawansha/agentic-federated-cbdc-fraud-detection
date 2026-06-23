@@ -13,7 +13,7 @@ data:
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
-            regex: (agentic-coordinator|secure-aggregator|policy-manager|model-registry|local-agent|local-gnn|privacy-layer|transaction-graph|alerting)
+            regex: (agentic-coordinator|federated-model-aggregator|policy-manager|model-registry|local-agent|local-gnn|privacy-layer|transaction-graph|alerting)
 ---
 apiVersion: apps/v1
 kind: Deployment

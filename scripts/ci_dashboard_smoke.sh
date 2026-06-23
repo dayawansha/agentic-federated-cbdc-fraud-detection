@@ -21,7 +21,7 @@ SKIP_DEPLOY=false
 
 APP_DEPLOYMENTS=(
   "agentic-coordinator"
-  "secure-aggregator"
+  "federated-model-aggregator"
   "policy-manager"
   "model-registry"
   "local-agent"

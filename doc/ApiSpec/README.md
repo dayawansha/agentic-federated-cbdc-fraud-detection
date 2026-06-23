@@ -15,7 +15,7 @@ These services use FastAPI, so Swagger UI is available at `/docs` and OpenAPI JS
 | Service | Kubernetes Service | Local Port |
 |---|---|---:|
 | Agentic Coordinator | `agentic-coordinator` | 8001 |
-| Secure Aggregator | `secure-aggregator` | 8002 |
+| Federated Model Aggregator | `federated-model-aggregator` | 8002 |
 | Policy Manager | `policy-manager` | 8003 |
 | Model Registry | `model-registry` | 8004 |
 | Local Agent | `local-agent` | 9001 |

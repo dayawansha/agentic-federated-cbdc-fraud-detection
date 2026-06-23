@@ -7,7 +7,7 @@ import sys
 import types
 import unittest
 
-SERVICE_SRC = "/Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/secure-aggregator/src"
+SERVICE_SRC = "/Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/federated-model-aggregator/src"
 if SERVICE_SRC not in sys.path:
     sys.path.insert(0, SERVICE_SRC)
 
@@ -83,12 +83,12 @@ def deserialize_state(payload):
     return torch.load(io.BytesIO(payload))
 
 
-class TestSecureAggregator(unittest.IsolatedAsyncioTestCase):
+class TestFederatedModelAggregator(unittest.IsolatedAsyncioTestCase):
     async def test_federated_averaging_weights_by_sample_size(self):
         update_a = serialize_state({"weight": torch.Tensor(2.0)})
         update_b = serialize_state({"weight": torch.Tensor(4.0)})
 
-        result = main.SecureAggregator.federated_averaging([update_a, update_b], [1, 3])
+        result = main.FederatedModelAggregator.federated_averaging([update_a, update_b], [1, 3])
         state = deserialize_state(result)
 
         self.assertAlmostEqual(state["weight"].value, 3.5)

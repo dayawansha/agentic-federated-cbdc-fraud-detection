@@ -1,6 +1,6 @@
 # Central Coordinator Flow
 
-This document explains the end-to-end orchestration flow within the Central Coordinator, detailing how the `agentic-coordinator`, `model-registry`, `policy-manager`, and `secure-aggregator` collaborate to execute a secure, privacy-preserving federated training round.
+This document explains the end-to-end orchestration flow within the Central Coordinator, detailing how the `agentic-coordinator`, `model-registry`, `policy-manager`, and `federated-model-aggregator` collaborate to execute a secure, privacy-preserving federated training round.
 
 ---
 
@@ -25,7 +25,7 @@ If a bank sends its raw model updates ($A$ or $B$) to the central coordinator, t
 
 4. **Division of Labor:**
    - The **Policy Manager** collects the individual masks ($M_A, M_B$), combines them into the **Master Mask Key** $(M_A + M_B)$, and sends only this combined key to the coordinator.
-   - The **Secure Aggregator** takes the scrambled updates and subtracts the Master Mask Key, revealing the clean average global model $(A + B)$ without any single service seeing the raw unmasked inputs from any bank.
+   - The **Federated Model Aggregator** takes the scrambled updates and subtracts the Master Mask Key, revealing the clean average global model $(A + B)$ without any single service seeing the raw unmasked inputs from any bank.
 
 ---
 
@@ -36,7 +36,7 @@ sequenceDiagram
     participant Coordinator as Agentic Coordinator
     participant MR as Model Registry
     participant PM as Policy Manager
-    participant SA as Secure Aggregator
+    participant SA as Federated Model Aggregator
     
     Coordinator->>PM: 1. Can we start? Check bank limits & status
     PM-->>Coordinator: Yes (Banks active & within Privacy Limits)
@@ -91,10 +91,10 @@ sequenceDiagram
 * **Recipient:** `Policy Manager`
 * **Details:** The Coordinator requests the combined mask key for the current round using `/secure-aggregation/masks/aggregate`. The Policy Manager decrypts all individual mask shares, computes the weighted sum, and returns the combined **Master Mask Key**.
 
-### 5. Secure Aggregation
+### 5. Federated Model Aggregation
 * **Sender:** `Agentic Coordinator`
-* **Recipient:** `Secure Aggregator`
-* **Details:** The Coordinator passes the masked weights and the Master Mask Key to the Secure Aggregator. The Secure Aggregator subtracts the Master Mask Key from the summed weights to reveal the clean, decrypted average model. It then adds a layer of Gaussian noise (Differential Privacy) to ensure the outputs cannot be reverse-engineered.
+* **Recipient:** `Federated Model Aggregator`
+* **Details:** The Coordinator passes the masked weights and the Master Mask Key to the Federated Model Aggregator. The Federated Model Aggregator subtracts the Master Mask Key from the summed weights to reveal the clean, decrypted average model. It then adds a layer of Gaussian noise (Differential Privacy) to ensure the outputs cannot be reverse-engineered.
 
 ### 6. Registering the New Model Version
 * **Sender:** `Agentic Coordinator`

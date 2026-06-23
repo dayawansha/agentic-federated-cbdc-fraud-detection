@@ -27,6 +27,11 @@ The `policy-manager` acts as the system's compliance officer and security guard.
 5. **Coordinating Secret Keys (Secure Aggregation Coordination)**
    - **What it does:** Helps blend everyone's AI models together securely without letting the coordinator see any bank's individual data.
    - **How it works:** Banks hide their local updates using mathematical "masks" (like temporary passwords). The Policy Manager collects pieces of these masks and combines them so that the coordinator can decrypt the final merged model without ever being able to decrypt any individual bank's model.
+   - **Why it is here (Separation of Duties / Security Boundary):**
+     In cryptographic federated learning designs, a common threat model involves a *semi-honest coordinator*.
+     * **The Risk:** If a single component receives the banks' individual encrypted/masked model updates *and* collects/reconstructs the individual secret mask shares, a compromise of that single service exposes all individual bank datasets.
+     * **The Solution:** By separating the key escrow service (`policy-manager`) from the parameter merging service (`federated-model-aggregator`), we divide the trust boundary. Under a production deployment, these two services could be run in different security zones, with separate network accessibility profiles, or even managed by different administrative entities. The `policy-manager` acts as the stateful key escrow and coordination layer, keeping the compute-heavy `federated-model-aggregator` stateless and isolated from sensitive keys.
+
 
 ---
 

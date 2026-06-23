@@ -22,7 +22,7 @@
 | REST Contract Definitions | High | 🟢 Completed | 100% |
 | Business Logic (Round Orchestration) | Critical | 🟢 Completed | 100% |
 | LangGraph Integration | Critical | 🟢 Completed | 100% |
-| Secure Aggregator Integration | Critical | 🟢 Completed | 100% |
+| Federated Model Aggregator Integration | Critical | 🟢 Completed | 100% |
 | Policy Manager Integration | High | 🟢 Completed | 100% |
 | Model Registry Integration | High | 🟢 Completed | 100% |
 | Unit Tests | Medium | 🔴 Not Started | 0% |
@@ -31,5 +31,5 @@
 ---
 
 ## Notes & Blockers
-- Implemented end-to-end round flow: trigger agents → wait for updates → aggregate via Secure Aggregator → register global model → update privacy budgets.
+- Implemented end-to-end round flow: trigger agents → wait for updates → aggregate via Federated Model Aggregator → register global model → update privacy budgets.
 - Exposes `/updates/submit` for agents to submit updates and `/rounds/start` to kick off rounds.

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Service configuration
 LOCAL_AGENT_URLS = os.getenv("LOCAL_AGENT_URLS", "http://localhost:9001").split(",")
-SECURE_AGGREGATOR_URL = os.getenv("SECURE_AGGREGATOR_URL", "http://localhost:8002")
+FEDERATED_MODEL_AGGREGATOR_URL = os.getenv("FEDERATED_MODEL_AGGREGATOR_URL", "http://localhost:8002")
 POLICY_MANAGER_URL = os.getenv("POLICY_MANAGER_URL", "http://localhost:8003")
 MODEL_REGISTRY_URL = os.getenv("MODEL_REGISTRY_URL", "http://localhost:8004")
 ROUND_WAIT_SECONDS = float(os.getenv("ROUND_WAIT_SECONDS", "300"))
@@ -641,7 +641,7 @@ async def negotiate_weights(state: AgentState):
     return state
 
 async def aggregate_results(state: AgentState):
-    logger.info("Aggregating results via Secure Aggregator")
+    logger.info("Aggregating results via Federated Model Aggregator")
     round_id = state["round_id"]
     updates = state.get("updates_received", [])
     if not updates:
@@ -690,7 +690,7 @@ async def aggregate_results(state: AgentState):
             "strategy": state["selected_strategy"],
             "noise_multiplier": 0.0,
         }
-        agg_resp = await client.post(f"{SECURE_AGGREGATOR_URL}/aggregate", json=agg_payload, timeout=180.0)
+        agg_resp = await client.post(f"{FEDERATED_MODEL_AGGREGATOR_URL}/aggregate", json=agg_payload, timeout=180.0)
         if agg_resp.status_code != 200:
             raise HTTPException(status_code=500, detail=f"Aggregation failed: {agg_resp.text}")
 

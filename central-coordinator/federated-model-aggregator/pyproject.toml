@@ -1,5 +1,5 @@
 [project]
-name = "secure-aggregator"
+name = "federated-model-aggregator"
 version = "0.1.0"
 description = "Secure Model Aggregator for Federated CBDC Fraud Detection"
 authors = [

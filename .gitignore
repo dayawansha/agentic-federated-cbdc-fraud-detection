@@ -8,3 +8,4 @@ bank-node/fraud-dashboard/build/
 .local-state/
 train-data/EllipticPlusPlus-main/
 train-data/processed/
+/.vscode/

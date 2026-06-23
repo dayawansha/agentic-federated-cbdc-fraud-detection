@@ -44,7 +44,7 @@ This document describes both:
 
 Unless a section explicitly states otherwise, the architecture should be read as **multi-bank extensible**, while the currently implemented runtime path is:
 
-- **Coordinator domain**: `agentic-coordinator`, `secure-aggregator`, `policy-manager`, `model-registry`
+- **Coordinator domain**: `agentic-coordinator`, `federated-model-aggregator`, `policy-manager`, `model-registry`
 - **Bank node domain**: `local-agent`, `local-gnn-model`, `privacy-layer`, `transaction-graph`, `alerting`, `fraud-dashboard`
 - **Current FL control plane**: REST-based orchestration
 - **Current async/event path**: Kafka for transaction events and fraud alerts
@@ -113,7 +113,7 @@ This project adopts a **Design Science Research (DSR)** approach, focusing on de
 flowchart TB
     subgraph "Central Coordinator Node"
         AC["agentic-coordinator"]
-        GA["secure-aggregator"]
+        GA["federated-model-aggregator"]
         PM["policy-manager"]
         MR["model-registry"]
     end
@@ -155,7 +155,7 @@ The topology below represents the **target deployment model** for a multi-instit
 ```mermaid
 flowchart LR
     subgraph "Central Bank Cluster"
-        CB["agentic-coordinator + secure-aggregator<br/>policy-manager + model-registry"]
+        CB["agentic-coordinator + federated-model-aggregator<br/>policy-manager + model-registry"]
         SEC["Security Gateway"]
     end
     
@@ -189,7 +189,7 @@ flowchart LR
 | **Local Agent** | Autonomous training, anomaly detection, model updates | Python, PyTorch |
 | **Local GNN** | Transaction graph analysis, fraud pattern detection | PyTorch Geometric |
 | **Agentic Coordinator** | Training orchestration, round scheduling, policy-aware validation, suspicious-update screening | FastAPI, LangGraph |
-| **Secure Aggregator** | FedAvg aggregation of protected model updates | FastAPI, PyTorch |
+| **Federated Model Aggregator** | FedAvg aggregation of protected model updates | FastAPI, PyTorch |
 | **Privacy Layer** | Differential privacy, encrypted transport of update payloads | FastAPI, custom privacy engine, `cryptography` |
 | **Transaction Graph** | Graph representation of transactions | Neo4j, Kafka, FastAPI |
 

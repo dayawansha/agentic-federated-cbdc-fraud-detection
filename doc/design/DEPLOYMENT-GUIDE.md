@@ -57,8 +57,8 @@ All Dockerfiles now include:
 # Agentic Coordinator
 docker build -t dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG} -f ./central-coordinator/agentic-coordinator/Dockerfile .
 
-# Secure Aggregator
-docker build -t dusman/federated-fraud-secure-aggregator:${IMAGE_TAG} -f ./central-coordinator/secure-aggregator/Dockerfile .
+# Federated Model Aggregator
+docker build -t dusman/federated-fraud-federated-model-aggregator:${IMAGE_TAG} -f ./central-coordinator/federated-model-aggregator/Dockerfile .
 
 # Policy Manager
 docker build -t dusman/federated-fraud-policy-manager:${IMAGE_TAG} -f ./central-coordinator/policy-manager/Dockerfile .
@@ -193,7 +193,7 @@ If using another local cluster, you still need to load the images into the clust
 ```bash
 # Example for Minikube
 minikube image load dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}
-minikube image load dusman/federated-fraud-secure-aggregator:${IMAGE_TAG}
+minikube image load dusman/federated-fraud-federated-model-aggregator:${IMAGE_TAG}
 minikube image load dusman/federated-fraud-policy-manager:${IMAGE_TAG}
 minikube image load dusman/federated-fraud-model-registry:${IMAGE_TAG}
 minikube image load dusman/federated-fraud-local-agent:${IMAGE_TAG}
@@ -228,7 +228,7 @@ kubectl get pods -o wide
 
 The validated healthy local result is that all application and infrastructure pods are `Running` on the single `minikube` node, including:
 - `agentic-coordinator`
-- `secure-aggregator`
+- `federated-model-aggregator`
 - `policy-manager`
 - `model-registry`
 - `local-agent`

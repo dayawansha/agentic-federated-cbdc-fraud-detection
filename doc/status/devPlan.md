@@ -51,7 +51,7 @@ graph LR
 graph TB
     subgraph "Central Coordinator Domain"
         AC[Agentic Coordinator<br/>Meta-Agent]
-        SA[Secure Aggregator<br/>FedAvg/FedGNN]
+        SA[Federated Model Aggregator<br/>FedAvg/FedGNN]
         PM[Policy Manager<br/>Privacy + Governance]
         MR[Model Registry<br/>Versions + Metrics]
     end
@@ -103,7 +103,7 @@ graph TB
 | # | Service | Description | Port | Protocol |
 |---|---------|-------------|------|----------|
 | 1 | **Agentic Coordinator** | Meta-Agent for FL orchestration | 8001 | REST + Kafka |
-| 2 | **Secure Aggregator** | FedAvg/FedGNN model aggregation | 8002 | REST + Kafka |
+| 2 | **Federated Model Aggregator** | FedAvg/FedGNN model aggregation | 8002 | REST + Kafka |
 | 3 | **Policy Manager** | Privacy budgets + Governance | 8003 | REST |
 | 4 | **Model Registry** | Model versions + Metrics | 8004 | REST |
 
@@ -132,7 +132,7 @@ agentic-federated-cbdc-fraud-detection/
 │   │   ├── Dockerfile
 │   │   ├── pyproject.toml
 │   │   └── README.md
-│   ├── secure-aggregator/                # Service 2
+│   ├── federated-model-aggregator/       # Service 2
 │   │   ├── src/
 │   │   ├── tests/
 │   │   ├── Dockerfile
@@ -237,7 +237,7 @@ responsibilities:
   - Adaptive scheduling based on node performance
   - Policy-aware gating and suspicious-update screening
 communication:
-  - REST → Secure Aggregator (Internal)
+  - REST → Federated Model Aggregator (Internal)
   - REST → Policy Manager (Internal)
   - REST ↔ Local Agents (External)
 dependencies:
@@ -245,10 +245,10 @@ dependencies:
   - Model Registry
 ```
 
-### 4.2 Secure Aggregator (FedAvg/FedGNN)
+### 4.2 Federated Model Aggregator (FedAvg/FedGNN)
 
 ```yaml
-service: secure-aggregator
+service: federated-model-aggregator
 domain: coordinator
 port: 8002
 protocol: REST
@@ -305,7 +305,7 @@ responsibilities:
   - Model deployment management
   - Rollback capabilities
 communication:
-  - HTTP ← Secure Aggregator
+  - HTTP ← Federated Model Aggregator
   - HTTP ← Local Agents (model pull)
 dependencies:
   - PostgreSQL (metadata)
@@ -497,7 +497,7 @@ dependencies:
 |------|----------|------|
 | Policy Manager | Critical | 5 |
 | Model Registry | Critical | 5 |
-| Secure Aggregator | Critical | 8 |
+| Federated Model Aggregator | Critical | 8 |
 | Agentic Coordinator | Critical | 10 |
 | SAGA workflow implementation (target-state extension) | High | 5 |
 
@@ -545,7 +545,7 @@ dependencies:
 sequenceDiagram
     participant AC as agentic-coordinator
     participant PM as policy-manager
-    participant SA as secure-aggregator
+    participant SA as federated-model-aggregator
     participant LA as local-agent
     participant MR as model-registry
     

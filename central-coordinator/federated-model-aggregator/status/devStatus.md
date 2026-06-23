@@ -1,4 +1,4 @@
-# Development Status: Secure Aggregator
+# Development Status: Federated Model Aggregator
 
 **Current Status:** 🟢 Completed (MVP)
 **Progress:** 80%
@@ -7,7 +7,7 @@
 ---
 
 ## Technical Specifications
-- **Service Name:** secure-aggregator
+- **Service Name:** federated-model-aggregator
 - **Domain:** coordinator
 - **Port:** 8002
 - **Protocol:** REST + Kafka

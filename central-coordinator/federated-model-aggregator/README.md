@@ -1,4 +1,4 @@
-# Secure Aggregator
+# Federated Model Aggregator
 
 Federated model parameters aggregation (FedAvg, WeightedFedAvg), secure decryption, and global metric synthesis.
 
@@ -6,7 +6,7 @@ Federated model parameters aggregation (FedAvg, WeightedFedAvg), secure decrypti
 - **`8002`** (REST API)
 
 ## Service Responsibilities
-The `secure-aggregator` is the **merging engine (math brain)** of the system. It combines all the separate models trained by individual banks into a single, improved global model.
+The `federated-model-aggregator` is the **merging engine (math brain)** of the system. It combines all the separate models trained by individual banks into a single, improved global model.
 
 1. **Merging Model Weights (Federated Averaging)**
    - **What it does:** Combines individual AI models from various banks into one master model.

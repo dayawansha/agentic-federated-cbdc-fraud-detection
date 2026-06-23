@@ -12,7 +12,7 @@ IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE_PREFIX="dusman/federated-fraud"
 IMAGES=(
     "${IMAGE_PREFIX}-agentic-coordinator:${IMAGE_TAG}"
-    "${IMAGE_PREFIX}-secure-aggregator:${IMAGE_TAG}"
+    "${IMAGE_PREFIX}-federated-model-aggregator:${IMAGE_TAG}"
     "${IMAGE_PREFIX}-policy-manager:${IMAGE_TAG}"
     "${IMAGE_PREFIX}-model-registry:${IMAGE_TAG}"
     "${IMAGE_PREFIX}-local-agent:${IMAGE_TAG}"

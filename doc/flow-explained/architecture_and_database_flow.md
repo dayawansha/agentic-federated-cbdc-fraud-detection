@@ -36,7 +36,7 @@ To guarantee that the model learnings sent by the banks cannot be reverse-engine
 graph TD
     subgraph Central Coordinator
         AC[Agentic Coordinator FastAPI / LangGraph]
-        SA[Secure Aggregator FastAPI]
+        SA[Federated Model Aggregator FastAPI]
         PM[Policy Manager FastAPI]
         MR[Model Registry FastAPI]
         PG[(PostgreSQL: federated_fraud_db)]
@@ -183,9 +183,9 @@ The Central Coordinator utilizes four primary services:
         1.  *Load Policies*: Requests global constraints and delta threshold matrices from `policy-manager`.
         2.  *Peer Weight Negotiation*: Requests local performance metrics from active Bank Nodes, negotiates aggregation weights, and verifies convergence.
         3.  *Collect Updates*: Receives encrypted and masked local model weights from participating banks.
-        4.  *Trigger Aggregation*: Sends masks and weight maps to the `secure-aggregator` to build the new global model.
+        4.  *Trigger Aggregation*: Sends masks and weight maps to the `federated-model-aggregator` to build the new global model.
         5.  *Evaluate Consensus*: Manages multi-agent voting protocols when new fraud patterns are proposed.
-*   **`secure-aggregator` (Aggregation Engine)**:
+*   **`federated-model-aggregator` (Aggregation Engine)**:
     *   Implements core federated learning algorithms, including **FedAvg** and **WeightedFedAvg**.
     *   Combines the collected client weights securely. Because clients use paired SMPC masks, the individual client masks cancel out mathematically when aggregated, leaving only the clean, averaged global weights.
 *   **`policy-manager` (Governance & Privacy Auditing)**:

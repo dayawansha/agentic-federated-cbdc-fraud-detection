@@ -10,7 +10,7 @@ This document outlines the primary REST APIs and Kafka-based integration points 
     *   **Query Params**: `round_id` (string)
     *   **Response**: `{"status": "success", "final_state": {...}}`
 
-### Secure Aggregator (Port 8002)
+### Federated Model Aggregator (Port 8002)
 *   **POST** `/aggregate`
     *   **Description**: Aggregate submitted privacy-protected model updates into a new masked global model snapshot. In the current secure-aggregation path, the aggregator only decrypts masked update payloads, verifies payload commitments, and supports `FedAvg` or `WeightedFedAvg`. Aggregate unmasking is performed after aggregation using a separately escrowed aggregate mask.
 

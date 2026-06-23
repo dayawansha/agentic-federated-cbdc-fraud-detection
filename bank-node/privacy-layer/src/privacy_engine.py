@@ -20,8 +20,8 @@ class PrivacyModule:
         if explicit_key:
             return explicit_key.encode("ascii")
 
-        # Deterministic fallback for local/dev use so privacy-layer and
-        # secure-aggregator can share the same transport key without extra setup.
+        # secure-aggregation can share the same transport key without extra setup.
+        # (federated-model-aggregator and privacy-layer)
         seed = os.getenv("PRIVACY_KEY_SEED", "development-only-shared-key")
         return base64.urlsafe_b64encode(hashlib.sha256(seed.encode("utf-8")).digest())
 

@@ -17,7 +17,7 @@ SKIP_HELM=false
 
 IMAGES=(
   "dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}"
-  "dusman/federated-fraud-secure-aggregator:${IMAGE_TAG}"
+  "dusman/federated-fraud-federated-model-aggregator:${IMAGE_TAG}"
   "dusman/federated-fraud-policy-manager:${IMAGE_TAG}"
   "dusman/federated-fraud-model-registry:${IMAGE_TAG}"
   "dusman/federated-fraud-local-agent:${IMAGE_TAG}"
@@ -30,7 +30,7 @@ IMAGES=(
 
 APP_DEPLOYMENTS=(
   "agentic-coordinator"
-  "secure-aggregator"
+  "federated-model-aggregator"
   "policy-manager"
   "model-registry"
   "local-agent"

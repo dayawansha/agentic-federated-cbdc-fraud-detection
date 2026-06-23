@@ -9,7 +9,7 @@ fi
 
 SERVICES=(
   "agentic-coordinator:8001"
-  "secure-aggregator:8002"
+  "federated-model-aggregator:8002"
   "policy-manager:8003"
   "model-registry:8004"
   "local-agent:9001"

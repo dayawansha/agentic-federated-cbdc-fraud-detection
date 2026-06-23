@@ -31,7 +31,7 @@ MINIKUBE_DISK_SIZE="${MINIKUBE_DISK_SIZE:-40g}"
 
 PORT_FORWARDS=(
   "agentic-coordinator|service/agentic-coordinator|8001:8001"
-  "secure-aggregator|service/secure-aggregator|8002:8002"
+  "federated-model-aggregator|service/federated-model-aggregator|8002:8002"
   "policy-manager|service/policy-manager|8003:8003"
   "model-registry|service/model-registry|8004:8004"
   "local-agent|service/local-agent|9001:9001"
@@ -296,7 +296,7 @@ run_health_checks() {
 
   local checks=(
     "Agentic Coordinator|http://127.0.0.1:8001/health"
-    "Secure Aggregator|http://127.0.0.1:8002/health"
+    "Federated Model Aggregator|http://127.0.0.1:8002/health"
     "Policy Manager|http://127.0.0.1:8003/health"
     "Model Registry|http://127.0.0.1:8004/health"
     "Local Agent|http://127.0.0.1:9001/health"
@@ -403,7 +403,7 @@ Namespace: ${NAMESPACE}
 Forwarded endpoints:
   Dashboard:            http://127.0.0.1:3001
   Agentic Coordinator:  http://127.0.0.1:8001
-  Secure Aggregator:    http://127.0.0.1:8002
+  Federated Model Aggregator: http://127.0.0.1:8002
   Policy Manager:       http://127.0.0.1:8003
   Model Registry:       http://127.0.0.1:8004
   Local Agent:          http://127.0.0.1:9001

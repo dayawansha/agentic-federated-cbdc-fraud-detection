@@ -24,7 +24,7 @@ def _resolve_transport_cipher() -> Fernet:
 
 TRANSPORT_CIPHER = _resolve_transport_cipher()
 
-class SecureAggregator:
+class FederatedModelAggregator:
     @staticmethod
     def federated_averaging(model_updates: List[bytes], aggregation_weights: List[float]) -> bytes:
         """
@@ -123,7 +123,7 @@ def _resolve_update_payload(update: AggregationItem) -> bytes:
             raise HTTPException(status_code=400, detail=f"Protected commitment mismatch for {update.agent_id}")
     return base64.b64decode(update.weights)
 
-app = FastAPI(title="Secure Aggregator Service")
+app = FastAPI(title="Federated Model Aggregator Service")
 
 @app.get("/health")
 async def health_check():
@@ -156,10 +156,10 @@ async def aggregate(request: AggregateRequest) -> AggregateResponse:
                     for update, size in zip(request.updates, sample_sizes)
                 ]
 
-        aggregated_bytes = SecureAggregator.federated_averaging(model_updates, aggregation_weights)
+        aggregated_bytes = FederatedModelAggregator.federated_averaging(model_updates, aggregation_weights)
         if request.noise_multiplier and request.noise_multiplier > 0:
             state = torch.load(io.BytesIO(aggregated_bytes))
-            noisy = SecureAggregator.add_dp_noise(state, float(request.noise_multiplier))
+            noisy = FederatedModelAggregator.add_dp_noise(state, float(request.noise_multiplier))
             out = io.BytesIO()
             torch.save(noisy, out)
             aggregated_bytes = out.getvalue()

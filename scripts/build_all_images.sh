@@ -7,7 +7,7 @@ IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 SERVICES=(
   "dusman/federated-fraud-agentic-coordinator|./central-coordinator/agentic-coordinator/Dockerfile"
-  "dusman/federated-fraud-secure-aggregator|./central-coordinator/secure-aggregator/Dockerfile"
+  "dusman/federated-fraud-federated-model-aggregator|./central-coordinator/federated-model-aggregator/Dockerfile"
   "dusman/federated-fraud-policy-manager|./central-coordinator/policy-manager/Dockerfile"
   "dusman/federated-fraud-model-registry|./central-coordinator/model-registry/Dockerfile"
   "dusman/federated-fraud-local-agent|./bank-node/local-agent/Dockerfile"

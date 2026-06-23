@@ -3,8 +3,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy project metadata and source for installation
-COPY central-coordinator/secure-aggregator/pyproject.toml .
-COPY central-coordinator/secure-aggregator/src/ ./src/
+COPY central-coordinator/federated-model-aggregator/pyproject.toml .
+COPY central-coordinator/federated-model-aggregator/src/ ./src/
 
 # Install dependencies and the project (with pip cache to save bandwidth)
 ENV PIP_DEFAULT_TIMEOUT=19000

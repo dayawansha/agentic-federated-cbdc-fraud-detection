@@ -22,7 +22,7 @@ The `agentic-coordinator` is the **conductor (brain)** of the entire federated s
 
 4. **Service Integration**
    - **What it does:** Acts as the communication bridge between all central and local services.
-   - **How it works:** It talks directly to the Secure Aggregator, Policy Manager, Model Registry, and the individual Bank Nodes to route requests, model weights, and mask keys.
+   - **How it works:** It talks directly to the Federated Model Aggregator, Policy Manager, Model Registry, and the individual Bank Nodes to route requests, model weights, and mask keys.
 
 ---
 
@@ -46,7 +46,7 @@ The `agentic-coordinator` is the **conductor (brain)** of the entire federated s
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LOCAL_AGENT_URLS` | Comma-separated list of bank-node agents | `http://local-agent:9001` |
-| `SECURE_AGGREGATOR_URL`| Destination for secure model aggregation | `http://secure-aggregator:8002` |
+| `FEDERATED_MODEL_AGGREGATOR_URL`| Destination for model aggregation | `http://federated-model-aggregator:8002` |
 | `POLICY_MANAGER_URL`   | Governance, audit, and mask configuration | `http://policy-manager:8003` |
 | `MODEL_REGISTRY_URL`   | ML model version metadata storage | `http://model-registry:8004` |
 
