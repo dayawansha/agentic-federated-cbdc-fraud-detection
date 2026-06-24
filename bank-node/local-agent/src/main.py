@@ -407,6 +407,23 @@ async def fetch_inference_predictions(limit: int = 10, tx_ids: Optional[List[int
 async def health_check():
     return {"status": "healthy"}
 
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Local Agent starting up. Querying latest model version from Model Registry...")
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{MODEL_REGISTRY_URL}/models/latest", timeout=5.0)
+            if response.status_code == 200:
+                payload = response.json()
+                version_id = payload.get("version_id")
+                if version_id:
+                    agent_status["last_model_version"] = version_id
+                    logger.info(f"Loaded active model version on startup: {version_id}")
+            else:
+                logger.info(f"Could not load latest model version on startup (Model Registry returned {response.status_code})")
+        except Exception as e:
+            logger.warning(f"Failed to query latest model version on startup (registry might be offline or empty): {e}")
+
 @app.get("/agent/status")
 async def get_status():
     return agent_status

@@ -161,6 +161,10 @@ function App() {
     []
   );
   const alertingDirectUrl = useMemo(() => process.env.REACT_APP_ALERTING_URL || 'http://localhost:9005', []);
+  const modelRegistryDirectUrl = useMemo(
+    () => process.env.REACT_APP_MODEL_REGISTRY_URL || 'http://localhost:8004',
+    []
+  );
   const kafkaUiDirectUrl = useMemo(() => process.env.REACT_APP_KAFKA_UI_URL || 'http://localhost:18080', []);
   const wsDirectOrigin = useMemo(() => {
     const override = process.env.REACT_APP_ALERTING_WS_URL;
@@ -206,11 +210,17 @@ function App() {
         url: useProxy === false ? transactionGraphDirectUrl : `${proxyApiBase}/transaction-graph`,
       },
       { name: 'alerting', label: 'Alerting', url: useProxy === false ? alertingDirectUrl : `${proxyApiBase}/alerting` },
+      {
+        name: 'model-registry',
+        label: 'Model Registry',
+        url: useProxy === false ? modelRegistryDirectUrl : `${proxyApiBase}/model-registry`,
+      },
     ],
     [
       alertingDirectUrl,
       localAgentDirectUrl,
       localGnnDirectUrl,
+      modelRegistryDirectUrl,
       privacyLayerDirectUrl,
       proxyApiBase,
       transactionGraphDirectUrl,
@@ -222,12 +232,14 @@ function App() {
   const [inferenceSnapshot, setInferenceSnapshot] = useState({ prediction_count: 0, predictions: [] });
   const [alerts, setAlerts] = useState([]);
   const [accountsSnapshot, setAccountsSnapshot] = useState({ count: null, accounts: [] });
+  const [modelVersions, setModelVersions] = useState([]);
   const [serviceHealth, setServiceHealth] = useState({});
   const [fetchState, setFetchState] = useState({
     alertsLoaded: false,
     inferenceLoaded: false,
     statusLoaded: false,
     graphLoaded: false,
+    modelRegistryLoaded: false,
     websocketConnected: false,
   });
 
@@ -324,6 +336,25 @@ function App() {
         }
       }
 
+      try {
+        const modelRegistryResponse = await fetch(
+          useProxy === false
+            ? `${modelRegistryDirectUrl}/models/versions`
+            : `${proxyApiBase}/model-registry/models/versions`
+        );
+        if (modelRegistryResponse.ok) {
+          const payload = await modelRegistryResponse.json();
+          if (!cancelled) {
+            setModelVersions(Array.isArray(payload) ? payload : []);
+            setFetchState((prev) => ({ ...prev, modelRegistryLoaded: true }));
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFetchState((prev) => ({ ...prev, modelRegistryLoaded: true }));
+        }
+      }
+
       const healthChecks = await Promise.all(serviceChecks);
       if (!cancelled) {
         setServiceHealth(Object.fromEntries(healthChecks));
@@ -336,7 +367,7 @@ function App() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [alertingDirectUrl, localAgentDirectUrl, proxyApiBase, serviceDefinitions, transactionGraphDirectUrl, useProxy]);
+  }, [alertingDirectUrl, localAgentDirectUrl, modelRegistryDirectUrl, proxyApiBase, serviceDefinitions, transactionGraphDirectUrl, useProxy]);
 
   useEffect(() => {
     let ws;
@@ -762,6 +793,147 @@ function App() {
               )}
             </SectionCard>
           </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1.2fr 1fr',
+            gap: 16,
+            marginBottom: 16,
+          }}
+        >
+          <SectionCard
+            title="Model Registry & Governance"
+            subtitle="Tracks all versions of the GNN fraud-detection model, highlighting the version currently running under the local-agent."
+          >
+            {modelVersions.length === 0 ? (
+              <EmptyState text="No model versions registered yet." />
+            ) : (
+              <div style={{ overflowX: 'auto', maxHeight: '320px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f3f4f6' }}>
+                      {['Status', 'Version ID', 'Created At', 'Type', 'Metrics'].map((heading) => (
+                        <th
+                          key={heading}
+                          style={{
+                            textAlign: 'left',
+                            padding: '10px 12px',
+                            borderBottom: `1px solid ${COLORS.border}`,
+                            color: COLORS.subtext,
+                            fontSize: 13,
+                          }}
+                        >
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelVersions.map((mv) => {
+                      const isActive = agentStatus?.last_model_version && mv.version_id === agentStatus.last_model_version;
+                      return (
+                        <tr key={mv.version_id} style={{ background: isActive ? '#f0fdf4' : 'transparent' }}>
+                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
+                            {isActive ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: '#15803d',
+                                  background: '#dcfce7',
+                                }}
+                              >
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
+                                Active
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: COLORS.subtext,
+                                  background: '#f3f4f6',
+                                }}
+                              >
+                                Registered
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontFamily: 'monospace', fontWeight: isActive ? 700 : 'normal' }}>
+                            {mv.version_id}
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                            {formatTimestamp(mv.created_at)}
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                borderRadius: 999,
+                                padding: '2px 6px',
+                                fontSize: 11,
+                                background: mv.is_global ? '#e0f2fe' : '#fef3c7',
+                                color: mv.is_global ? '#0369a1' : '#b45309',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {mv.is_global ? 'Global' : 'Local'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 12, fontFamily: 'monospace' }}>
+                            {mv.metrics && Object.keys(mv.metrics).length > 0 ? (
+                              Object.entries(mv.metrics).map(([name, val]) => (
+                                <div key={name}>
+                                  <strong>{name}:</strong> {typeof val === 'number' ? val.toFixed(4) : String(val)}
+                                </div>
+                              ))
+                            ) : (
+                              <span style={{ color: COLORS.subtext }}>No metrics</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Model Performance Trends"
+            subtitle="Comparing Accuracy and Loss metrics over registered versions."
+          >
+            <div style={{ height: 260 }}>
+              {modelVersions.length === 0 ? (
+                <EmptyState text="Awaiting model registry versions data." />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={[...modelVersions].reverse()}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
+                    <YAxis domain={[0, 1]} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
+                    <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </SectionCard>
         </div>
 
         <SectionCard title="Recent Alerts Feed" subtitle="Live alert stream from the Alerting service, enriched with timestamps and confidence.">

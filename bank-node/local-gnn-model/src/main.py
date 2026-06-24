@@ -155,7 +155,7 @@ def _load_graph_data() -> Data:
     if not feature_cols:
         raise ValueError("Shard file has no feature columns")
 
-    x = torch.tensor(nodes_df[feature_cols].to_numpy(dtype="float32"), dtype=torch.float32)
+    x = torch.tensor(nodes_df[feature_cols].fillna(0.0).to_numpy(dtype="float32"), dtype=torch.float32)
 
     classes_df = pd.read_csv(classes_path)
     classes_df["txId"] = classes_df["txId"].astype("int64")

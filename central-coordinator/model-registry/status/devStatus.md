@@ -1,8 +1,8 @@
 # Development Status: Model Registry
 
-**Current Status:** 🟢 Completed (MVP)
-**Progress:** 75%
-**Last Updated:** 2026-06-12
+**Current Status:** 🟢 Completed
+**Progress:** 100%
+**Last Updated:** 2026-06-24
 
 ---
 
@@ -23,12 +23,14 @@
 | Versioning Logic | High | 🟢 Completed | 100% |
 | PostgreSQL Integration | High | 🟢 Completed | 100% |
 | Artifact Storage (Local Disk) | High | 🟢 Completed | 100% |
-| MLflow Integration | Medium | 🔵 On Hold | - |
-| Artifact Storage (MinIO) | Medium | 🔵 On Hold | - |
+| MLflow Integration | Medium | 🟢 Completed | 100% |
+| Artifact Storage (MinIO) | Medium | 🟢 Completed | 100% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
 
 ## Notes & Blockers
 - Model metadata is persisted in PostgreSQL.
-- Model artifacts are stored on local disk via `ARTIFACT_DIR` (bytes uploaded via `/models/register`).
+- Model artifacts are stored in MinIO/S3 object storage (backed by `minio-pvc`).
+- MLflow tracking logs model execution lifecycle, metrics, and artifact registration (backed by `mlflow-pvc` with SQLite metadata).
+- If S3 or MLflow environment variables are absent, the service falls back gracefully to local disk artifact storage.

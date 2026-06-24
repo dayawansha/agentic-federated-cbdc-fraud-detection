@@ -62,8 +62,23 @@ async def run_federated_round() -> bool:
             logger.error(f"❌ E2E test error: {e}")
             return False
 
+import subprocess
+
+def sync_artifacts():
+    try:
+        pod_name_cmd = ["kubectl", "get", "pod", "-l", "app=model-registry", "-o", "jsonpath={.items[0].metadata.name}"]
+        pod_name = subprocess.check_output(pod_name_cmd).decode("utf-8").strip()
+        if pod_name:
+            logger.info(f"Syncing artifacts from model-registry pod ({pod_name}) to host...")
+            subprocess.run(["kubectl", "cp", f"{pod_name}:/app/artifacts", "central-coordinator/model-registry/artifacts/"], check=True)
+            logger.info("✅ Artifacts synchronized successfully to host directory")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to automatically sync artifacts: {e}")
+
 if __name__ == "__main__":
     print("--- Federated CBDC Fraud Detection E2E Test ---")
     health_ok = asyncio.run(check_services_health())
     round_ok = asyncio.run(run_federated_round())
+    if round_ok:
+        sync_artifacts()
     sys.exit(0 if (health_ok and round_ok) else 1)

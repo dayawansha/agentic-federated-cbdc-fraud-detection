@@ -39,6 +39,13 @@ class SecureAggregationPrepareResponse(BaseModel):
     masked_weights: str
     encrypted_mask_share: str
 
+class ClipGradientsRequest(BaseModel):
+    gradients: str
+    max_grad_norm: float = 1.0
+
+class ClipGradientsResponse(BaseModel):
+    clipped_gradients: str
+
 class PrivacyEvaluationRequest(BaseModel):
     raw_weights: str
     protected_weights: str
@@ -265,6 +272,33 @@ async def evaluate_privacy_sweep(request: PrivacySweepRequest) -> PrivacySweepRe
         return PrivacySweepResponse(experiment_count=len(results), results=results)
     except Exception as e:
         logger.error(f"Error running privacy evaluation sweep: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/privacy/clip-gradients", response_model=ClipGradientsResponse)
+async def clip_gradients(request: ClipGradientsRequest) -> ClipGradientsResponse:
+    try:
+        try:
+            import torch
+        except Exception as import_error:
+            logger.warning("Torch unavailable in privacy-layer, skipping clipping: %s", import_error)
+            return ClipGradientsResponse(clipped_gradients=request.gradients)
+
+        # Deserialize gradient tensors
+        buffer = io.BytesIO(base64.b64decode(request.gradients))
+        grad_samples = torch.load(buffer)
+        
+        # Clip per-sample gradients
+        clipped_grads = privacy_module.clip_per_sample_gradients(grad_samples, request.max_grad_norm)
+        
+        # Serialize back to bytes
+        output_buffer = io.BytesIO()
+        torch.save(clipped_grads, output_buffer)
+        
+        return ClipGradientsResponse(
+            clipped_gradients=base64.b64encode(output_buffer.getvalue()).decode("ascii")
+        )
+    except Exception as e:
+        logger.error(f"Error clipping gradients: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

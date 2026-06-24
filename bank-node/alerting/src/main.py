@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
 from confluent_kafka import Consumer, KafkaError
 import threading
 
@@ -18,7 +19,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Alerting Service")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    global event_loop
+    event_loop = asyncio.get_running_loop()
+    asyncio.create_task(_broadcast_worker())
+    thread = threading.Thread(target=consume_fraud_events, args=(event_loop,), daemon=True)
+    thread.start()
+    yield
+
+app = FastAPI(title="Alerting Service", lifespan=lifespan)
 
 recent_alerts: List[Dict[str, Any]] = []
 recent_alerts_max = int(os.getenv("RECENT_ALERTS_MAX", "200"))
@@ -125,13 +136,6 @@ async def _broadcast_worker():
         for ws in to_remove:
             connected_clients.discard(ws)
 
-@app.on_event("startup")
-async def startup_event():
-    global event_loop
-    event_loop = asyncio.get_running_loop()
-    asyncio.create_task(_broadcast_worker())
-    thread = threading.Thread(target=consume_fraud_events, args=(event_loop,), daemon=True)
-    thread.start()
 
 if __name__ == "__main__":
     import uvicorn

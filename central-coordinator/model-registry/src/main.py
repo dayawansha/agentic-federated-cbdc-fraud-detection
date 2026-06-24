@@ -2,6 +2,8 @@ import logging
 import os
 import uuid
 import base64
+import boto3
+from botocore.client import Config
 from fastapi import FastAPI, HTTPException
 from typing import Dict, List, Optional
 from pydantic import BaseModel
@@ -30,6 +32,41 @@ def _build_database_url() -> str:
 
 DATABASE_URL = _build_database_url()
 ARTIFACT_DIR = os.getenv("ARTIFACT_DIR", os.path.abspath(os.path.join(os.getcwd(), "artifacts")))
+
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "minioadmin")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "minioadmin")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "model-artifacts")
+S3_SECURE = os.getenv("S3_SECURE", "False").lower() in ("true", "1")
+
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
+
+def _get_s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=S3_ENDPOINT_URL,
+        aws_access_key_id=S3_ACCESS_KEY,
+        aws_secret_access_key=S3_SECRET_KEY,
+        config=Config(signature_version="s3v4"),
+        region_name="us-east-1",
+        use_ssl=S3_SECURE,
+    )
+
+def _init_s3_bucket():
+    if not S3_ENDPOINT_URL:
+        logger.info("S3_ENDPOINT_URL not configured. Using local disk fallback for model artifacts.")
+        return
+    try:
+        s3 = _get_s3_client()
+        s3.head_bucket(Bucket=S3_BUCKET_NAME)
+        logger.info(f"Connected to MinIO/S3. Bucket '{S3_BUCKET_NAME}' already exists.")
+    except Exception:
+        try:
+            s3 = _get_s3_client()
+            s3.create_bucket(Bucket=S3_BUCKET_NAME)
+            logger.info(f"Connected to MinIO/S3. Created bucket '{S3_BUCKET_NAME}'.")
+        except Exception as e:
+            logger.error(f"Failed to initialize S3 bucket '{S3_BUCKET_NAME}': {e}")
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -67,6 +104,7 @@ class ModelWeightsResponse(BaseModel):
 async def startup_event():
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _init_s3_bucket()
 
 @app.get("/health")
 async def health_check():
@@ -80,9 +118,29 @@ async def register_model(request: RegisterModelRequest):
     artifact_path = request.artifact_path
     if request.weights is not None:
         filename = f"{version_id}.pt"
-        artifact_path = os.path.join(ARTIFACT_DIR, filename)
-        with open(artifact_path, "wb") as f:
-            f.write(base64.b64decode(request.weights))
+        local_path = os.path.join(ARTIFACT_DIR, filename)
+        try:
+            binary_weights = base64.b64decode(request.weights)
+            with open(local_path, "wb") as f:
+                f.write(binary_weights)
+            logger.info(f"Saved weights for {version_id} to local disk: {local_path}")
+        except Exception as e:
+            logger.error(f"Failed to write weights for {version_id} to local disk: {e}")
+
+        artifact_path = local_path
+        if S3_ENDPOINT_URL:
+            try:
+                s3 = _get_s3_client()
+                binary_weights = base64.b64decode(request.weights)
+                s3.put_object(
+                    Bucket=S3_BUCKET_NAME,
+                    Key=f"{version_id}.pt",
+                    Body=binary_weights
+                )
+                artifact_path = f"s3://{S3_BUCKET_NAME}/{version_id}.pt"
+                logger.info(f"Uploaded weights for {version_id} to S3 bucket '{S3_BUCKET_NAME}'")
+            except Exception as e:
+                logger.error(f"Failed to upload weights for {version_id} to S3: {e}. Falling back to registered local path.")
 
     if not artifact_path:
         raise HTTPException(status_code=400, detail="artifact_path or weights must be provided")
@@ -97,6 +155,36 @@ async def register_model(request: RegisterModelRequest):
     with SessionLocal() as session:
         session.add(row)
         session.commit()
+
+    # MLflow tracking integration
+    if MLFLOW_TRACKING_URI:
+        try:
+            import mlflow
+            mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+            mlflow.set_experiment("federated-fraud-detection")
+            with mlflow.start_run(run_name=version_id):
+                for key, val in (request.metrics or {}).items():
+                    try:
+                        mlflow.log_metric(key, float(val))
+                    except Exception:
+                        pass
+                mlflow.set_tag("version_id", version_id)
+                mlflow.set_tag("is_global", str(request.is_global))
+                mlflow.set_tag("artifact_path", artifact_path)
+                
+                if request.weights is not None:
+                    tmp_filename = f"tmp_{version_id}.pt"
+                    tmp_filepath = os.path.join(ARTIFACT_DIR, tmp_filename)
+                    with open(tmp_filepath, "wb") as f:
+                        f.write(base64.b64decode(request.weights))
+                    mlflow.log_artifact(tmp_filepath, artifact_path="model")
+                    try:
+                        os.remove(tmp_filepath)
+                    except Exception:
+                        pass
+                logger.info(f"Logged model run {version_id} to MLflow")
+        except Exception as e:
+            logger.error(f"Failed to log to MLflow: {e}")
 
     logger.info(f"Registered new model version: {version_id}")
     return {"status": "success", "version_id": version_id}
@@ -116,6 +204,19 @@ async def get_latest_model():
         )
 
 def _read_artifact_base64(version_id: str, artifact_path: str) -> ModelWeightsResponse:
+    if artifact_path.startswith("s3://"):
+        try:
+            parts = artifact_path[5:].split("/", 1)
+            bucket = parts[0]
+            key = parts[1]
+            s3 = _get_s3_client()
+            response = s3.get_object(Bucket=bucket, Key=key)
+            payload = base64.b64encode(response["Body"].read()).decode("ascii")
+            return ModelWeightsResponse(version_id=version_id, weights=payload)
+        except Exception as e:
+            logger.error(f"Failed to download weights for {version_id} from S3 path {artifact_path}: {e}")
+            raise HTTPException(status_code=404, detail=f"S3 Artifact not found for model version {version_id}")
+
     if not os.path.exists(artifact_path):
         raise HTTPException(status_code=404, detail=f"Artifact not found for model version {version_id}")
     with open(artifact_path, "rb") as f:

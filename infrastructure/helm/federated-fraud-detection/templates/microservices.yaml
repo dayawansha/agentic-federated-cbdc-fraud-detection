@@ -78,6 +78,42 @@ spec:
             - name: MODEL_REGISTRY_URL
               value: "http://model-registry:8004"
 {{- end }}
+{{- if eq $name "modelRegistry" }}
+            {{- if $.Values.infrastructure.minio.enabled }}
+            - name: S3_ENDPOINT_URL
+              value: {{ printf "http://minio:%d" (int $.Values.infrastructure.minio.port) | quote }}
+            - name: S3_ACCESS_KEY
+              value: "minioadmin"
+            - name: S3_SECRET_KEY
+              value: "minioadmin"
+            - name: S3_BUCKET_NAME
+              value: "model-artifacts"
+            - name: AWS_ACCESS_KEY_ID
+              value: "minioadmin"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "minioadmin"
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: {{ printf "http://minio:%d" (int $.Values.infrastructure.minio.port) | quote }}
+            - name: AWS_ENDPOINT_URL
+              value: {{ printf "http://minio:%d" (int $.Values.infrastructure.minio.port) | quote }}
+            {{- end }}
+            {{- if $.Values.infrastructure.mlflow.enabled }}
+            - name: MLFLOW_TRACKING_URI
+              value: {{ printf "http://mlflow:%d" (int $.Values.infrastructure.mlflow.port) | quote }}
+            {{- end }}
+{{- end }}
+          {{- if and (eq $name "modelRegistry") $config.hostPath }}
+          volumeMounts:
+            - name: registry-artifacts
+              mountPath: /app/artifacts
+          {{- end }}
+      {{- if and (eq $name "modelRegistry") $config.hostPath }}
+      volumes:
+        - name: registry-artifacts
+          hostPath:
+            path: {{ $config.hostPath | quote }}
+            type: DirectoryOrCreate
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -115,6 +151,8 @@ spec:
         app: zookeeper
     spec:
       enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: zookeeper
           image: confluentinc/cp-zookeeper:7.3.0
@@ -125,6 +163,16 @@ spec:
               value: "2181"
             - name: ZOOKEEPER_TICK_TIME
               value: "2000"
+          volumeMounts:
+            - name: zookeeper-data
+              mountPath: /var/lib/zookeeper/data
+            - name: zookeeper-log
+              mountPath: /var/lib/zookeeper/log
+      volumes:
+        - name: zookeeper-data
+          emptyDir: {}
+        - name: zookeeper-log
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -155,6 +203,8 @@ spec:
         app: kafka
     spec:
       enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.3.0
@@ -181,6 +231,12 @@ spec:
               value: "0"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+      volumes:
+        - name: kafka-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

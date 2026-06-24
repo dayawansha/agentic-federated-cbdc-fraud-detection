@@ -88,3 +88,11 @@ infrastructure:
     enabled: true
   pgadmin:
     enabled: true
+  minio:
+    enabled: true
+    port: 9000
+    consolePort: 9001
+  mlflow:
+    enabled: true
+    port: 5000
+

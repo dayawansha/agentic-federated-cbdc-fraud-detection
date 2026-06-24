@@ -1,12 +1,14 @@
 import asyncio
 import base64
 import importlib
+import io
 import os
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import JSON
 import sqlalchemy.dialects.postgresql as postgres_dialect
@@ -116,6 +118,63 @@ class TestModelRegistry(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "artifact_path or weights must be provided")
+
+    @patch("main._get_s3_client")
+    @patch("mlflow.start_run")
+    @patch("mlflow.set_tracking_uri")
+    @patch("mlflow.set_experiment")
+    def test_register_model_logs_to_s3_and_mlflow_when_configured(
+        self, mock_set_experiment, mock_set_tracking_uri, mock_start_run, mock_get_s3
+    ):
+        # Set config mock variables
+        main.S3_ENDPOINT_URL = "http://mock-minio:9000"
+        main.MLFLOW_TRACKING_URI = "http://mock-mlflow:5000"
+
+        # Mock S3 client
+        mock_s3 = mock_get_s3.return_value
+        mock_s3.get_object.return_value = {
+            "Body": io.BytesIO(b"s3-weights")
+        }
+
+        # Mock MLflow run context manager
+        mock_run = mock_start_run.return_value.__enter__.return_value
+
+        try:
+            payload = base64.b64encode(b"s3-weights").decode("ascii")
+            response = asyncio.run(
+                main.register_model(
+                    main.RegisterModelRequest(
+                        version_id="v-test-s3-mlflow",
+                        metrics={"accuracy": 0.99},
+                        weights=payload,
+                        is_global=True,
+                    )
+                )
+            )
+
+            # Assert S3 put_object called
+            mock_s3.put_object.assert_called_once_with(
+                Bucket=main.S3_BUCKET_NAME,
+                Key="v-test-s3-mlflow.pt",
+                Body=b"s3-weights"
+            )
+
+            # Assert MLflow calls made
+            mock_set_tracking_uri.assert_called_with("http://mock-mlflow:5000")
+            mock_set_experiment.assert_called_with("federated-fraud-detection")
+            mock_start_run.assert_called_once()
+
+            # Retrieve weights should call S3 get_object
+            weights_resp = asyncio.run(main.get_model_weights("v-test-s3-mlflow"))
+            self.assertEqual(base64.b64decode(weights_resp.weights), b"s3-weights")
+            mock_s3.get_object.assert_called_once_with(
+                Bucket=main.S3_BUCKET_NAME,
+                Key="v-test-s3-mlflow.pt"
+            )
+        finally:
+            # Revert configs
+            main.S3_ENDPOINT_URL = None
+            main.MLFLOW_TRACKING_URI = None
 
 
 if __name__ == "__main__":

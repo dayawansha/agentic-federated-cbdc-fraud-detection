@@ -248,6 +248,68 @@ class TestPrivacyLayer(unittest.IsolatedAsyncioTestCase):
         self.assertIn("layer", masked_state)
         self.assertNotEqual(response.encrypted_mask_share, "")
 
+    def test_clip_per_sample_gradients_math(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("PyTorch is not available to test gradient clipping math")
+
+        # Batch size = 2, parameter size = 3
+        # Sample 1: [1.0, 2.0, 2.0] -> L2 Norm = sqrt(1+4+4) = 3.0
+        # Sample 2: [4.0, 4.0, 2.0] -> L2 Norm = sqrt(16+16+4) = 6.0
+        g1 = torch.tensor([[1.0, 2.0, 2.0], [4.0, 4.0, 2.0]])
+        
+        # Test 1: max_norm = 6.0 (no clipping should happen)
+        clipped_grads = main.privacy_module.clip_per_sample_gradients([g1], max_grad_norm=6.0)
+        # Summed output should be [1+4, 2+4, 2+2] = [5.0, 6.0, 4.0]
+        expected_no_clip = torch.tensor([5.0, 6.0, 4.0])
+        self.assertTrue(torch.allclose(clipped_grads[0], expected_no_clip))
+
+        # Test 2: max_norm = 3.0 (Sample 2 norm is 6.0, so should be scaled by 3.0/6.0 = 0.5)
+        # Sample 1 (norm 3.0 <= 3.0): [1.0, 2.0, 2.0]
+        # Sample 2 (norm 6.0 > 3.0, scaled by 0.5): [2.0, 2.0, 1.0]
+        # Summed output: [1+2, 2+2, 2+1] = [3.0, 4.0, 3.0]
+        clipped_grads_norm_3 = main.privacy_module.clip_per_sample_gradients([g1], max_grad_norm=3.0)
+        expected_clip = torch.tensor([3.0, 4.0, 3.0])
+        self.assertTrue(torch.allclose(clipped_grads_norm_3[0], expected_clip))
+
+        # Test 3: None preservation and correct positioning
+        clipped_grads_with_none = main.privacy_module.clip_per_sample_gradients([g1, None], max_grad_norm=3.0)
+        self.assertEqual(len(clipped_grads_with_none), 2)
+        self.assertTrue(torch.allclose(clipped_grads_with_none[0], expected_clip))
+        self.assertIsNone(clipped_grads_with_none[1])
+
+    def test_make_model_private_fallback(self):
+        fake_model = object()
+        fake_optimizer = object()
+        fake_loader = object()
+        model, optimizer, loader = main.privacy_module.make_model_private(
+            fake_model, fake_optimizer, fake_loader, 0.1, 1.0
+        )
+        self.assertEqual(model, fake_model)
+        self.assertEqual(optimizer, fake_optimizer)
+        self.assertEqual(loader, fake_loader)
+
+    async def test_clip_gradients_endpoint(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("PyTorch is not available to test gradient clipping endpoint")
+
+        import io
+        g1 = torch.tensor([[1.0, 2.0, 2.0], [4.0, 4.0, 2.0]])
+        buffer = io.BytesIO()
+        torch.save([g1], buffer)
+        payload = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        request = main.ClipGradientsRequest(gradients=payload, max_grad_norm=3.0)
+        response = await main.clip_gradients(request)
+
+        output_buffer = io.BytesIO(base64.b64decode(response.clipped_gradients))
+        clipped_grads = torch.load(output_buffer)
+        expected_clip = torch.tensor([3.0, 4.0, 3.0])
+        self.assertTrue(torch.allclose(clipped_grads[0], expected_clip))
+
 
 if __name__ == "__main__":
     unittest.main()

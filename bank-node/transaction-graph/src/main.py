@@ -71,5 +71,31 @@ async def get_account_features(account_id: str):
         logger.error(f"Error in get_account_features: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/accounts/{account_id}/centrality")
+async def get_account_centrality(account_id: str):
+    """
+    Returns Cypher-native centrality proxies for an account:
+    in_degree, out_degree, two_hop_reach, betweenness_proxy, pagerank_approx.
+    No APOC or GDS plugin required.
+    """
+    try:
+        return graph_service.get_account_centrality(account_id)
+    except Exception as e:
+        logger.error(f"Error in get_account_centrality: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/accounts/{account_id}/temporal")
+async def get_account_temporal(account_id: str):
+    """
+    Returns temporal windowing features for an account:
+    tx_count_1h, tx_count_24h, tx_count_7d, velocity_7d, burst_ratio,
+    first_tx_timestamp, last_tx_timestamp.
+    """
+    try:
+        return graph_service.get_account_temporal_features(account_id)
+    except Exception as e:
+        logger.error(f"Error in get_account_temporal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=9004)
