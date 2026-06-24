@@ -1,8 +1,8 @@
 # Development Status: Federated Model Aggregator
 
-**Current Status:** 🟢 Completed (MVP)
-**Progress:** 80%
-**Last Updated:** 2026-06-13
+**Current Status:** 🟢 Completed (MVP + Test Coverage)
+**Progress:** 100%
+**Last Updated:** 2026-06-24
 
 ---
 
@@ -23,7 +23,7 @@
 | Federated Aggregation Logic (FedAvg) | Critical | 🟢 Completed | 100% |
 | Optional DP Noise (server-side) | High | 🟢 Completed | 100% |
 | REST Aggregation API (`/aggregate`) | High | 🟢 Completed | 100% |
-| Unit Tests | Medium | 🔴 Not Started | 0% |
+| Unit Tests | Medium | 🟢 Completed | 100% |
 | Dockerization | Medium | 🟢 Completed | 100% |
 
 ---
@@ -31,3 +31,5 @@
 ## Notes & Blockers
 - Aggregation is implemented as a REST endpoint for interoperability with existing services.
 - Advanced secure aggregation protocols beyond DP-noise (e.g., MPC-style masking) are not implemented.
+- Unit tests are fully implemented under `tests/test_main.py` and pass successfully.
+

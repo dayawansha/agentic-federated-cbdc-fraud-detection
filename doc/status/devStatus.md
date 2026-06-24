@@ -27,7 +27,7 @@
 - **Privacy Layer**: Differential privacy noise application and encryption utilities exposed via REST; coordinator submissions now explicitly require protected updates, Privacy Layer now prepares masked secure-aggregation payloads plus encrypted mask shares, and reusable single-run and comparative privacy evaluation endpoints expose leakage-style proxy metrics.
 - **Inference-Driven Alerts**: Local Agent can now publish high-confidence illicit Local GNN predictions into the `fraud.alerts` stream after a round completes.
 - **Policy-Driven Coordination**: Agentic Coordinator now pulls versioned global policies before each round, filters agents through governance and reliability checks, validates update quality against policy thresholds, screens suspicious submissions using metric sanity and peer-outlier checks, and blocks aggregation when too few valid updates remain.
-- **Adaptive Aggregation**: Coordinator can now switch between `FedAvg` and `WeightedFedAvg`, and the Secure Aggregator applies reliability-aware weighting when the adaptive strategy is selected.
+- **Adaptive Aggregation**: Coordinator can now switch between `FedAvg` and `WeightedFedAvg`, and the Federated Model Aggregator applies reliability-aware weighting when the adaptive strategy is selected.
 - **Governance Depth**: Policy Manager now persists versioned global policies, agent governance controls, and audit events for policy changes and privacy-budget consumption.
 - **Operational Visibility (MVP+)**: Alerting supports recent alerts API and WebSocket broadcast; Dashboard now exposes KPI cards, service health, full analytics visualizations, single-entry access through the dashboard service, and an inference watchlist fed through Local Agent.
 
@@ -47,13 +47,13 @@
 Services Running:       10 / 10
 MVP Round Flow:         1 / 1
 Persistence (DB):       2 / 2 (Policy + Registry)
-Unit Tests:             9 / 10 (partial)
+Unit Tests:             10 / 10 (complete)
 ```
 
 ### Recent Decisions
 
 - **Jun 12, 2026:** Standardized model-weight payload transport via base64 JSON between services.
-- **Jun 12, 2026:** Implemented REST-based Secure Aggregator `/aggregate` for FedAvg interoperability.
+- **Jun 12, 2026:** Implemented REST-based Federated Model Aggregator `/aggregate` for FedAvg interoperability.
 - **Jun 12, 2026:** Migrated Policy Manager and Model Registry from in-memory storage to PostgreSQL.
 
 ---
@@ -62,11 +62,9 @@ Unit Tests:             9 / 10 (partial)
 
 ### Coordinator Domain
 
-| Service | Status | Progress | Notes |
-|---------|--------|----------|-------|
-| Agentic Coordinator | 🟢 MVP Complete | 89% | Orchestrates round flow, governance-aware agent selection, adaptive strategy choice, and suspicious-update screening |
-| Secure Aggregator | 🟢 MVP Complete | 90% | `FedAvg` and `WeightedFedAvg` via REST `/aggregate`; verifies payload commitments and aggregates only masked encrypted payloads, while aggregate unmasking uses a separately escrowed mask path |
-| Policy Manager | 🟢 MVP Complete | 89% | Budgets, versioned global policies, governance-agent controls, audit events, and secure-aggregation mask escrow persisted in PostgreSQL |
+| Agentic Coordinator | 🟢 Completed (MVP + Tests) | 100% | Orchestrates round flow, governance-aware agent selection, adaptive strategy choice, suspicious-update screening, and unit tested |
+| Federated Model Aggregator | 🟢 Completed (MVP + Tests) | 100% | `FedAvg` and `WeightedFedAvg` via REST `/aggregate`; verifies payload commitments, aggregates masked encrypted payloads, and unit tested |
+| Policy Manager | 🟢 Completed (MVP + Tests) | 100% | Budgets, versioned global policies, governance-agent controls, audit events, and secure-aggregation mask escrow persisted, and unit tested |
 | Model Registry | 🟢 MVP Complete | 75% | Versions persisted in PostgreSQL; artifacts stored on disk |
 
 ### Bank Node Domain
@@ -107,7 +105,7 @@ Unit Tests:             9 / 10 (partial)
 ### Phase 2: Core Coordinator Services (Week 3-6)
 - [x] Policy Manager (REST + PostgreSQL budgets)
 - [x] Model Registry (REST + PostgreSQL versions)
-- [x] Secure Aggregator (FedAvg via REST)
+- [x] Federated Model Aggregator (FedAvg via REST)
 - [x] Agentic Coordinator (LangGraph-based orchestration + integrations)
 - [x] Round workflow (MVP)
 
