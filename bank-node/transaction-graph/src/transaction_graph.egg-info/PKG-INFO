@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: transaction-graph
+Version: 0.1.0
+Summary: Neo4j based transaction graph service for bank nodes
+Author-email: Antigravity <antigravity@example.com>
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.100.0
+Requires-Dist: uvicorn>=0.23.0
+Requires-Dist: neo4j>=5.10.0
+Requires-Dist: confluent-kafka>=2.2.0
+Requires-Dist: pydantic>=2.1.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: python-dotenv>=1.0.0

@@ -1,0 +1,127 @@
+{{- if .Values.infrastructure.minio.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:RELEASE.2024-01-18T22-51-28Z
+          args:
+            - server
+            - /data
+            - --console-address
+            - :9001
+          ports:
+            - containerPort: {{ .Values.infrastructure.minio.port }}
+              name: api
+            - containerPort: {{ .Values.infrastructure.minio.consolePort }}
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              value: "minioadmin"
+            - name: MINIO_ROOT_PASSWORD
+              value: "minioadmin"
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      protocol: TCP
+      port: {{ .Values.infrastructure.minio.port }}
+      targetPort: {{ .Values.infrastructure.minio.port }}
+    - name: console
+      protocol: TCP
+      port: {{ .Values.infrastructure.minio.consolePort }}
+      targetPort: {{ .Values.infrastructure.minio.consolePort }}
+{{- end }}
+
+{{- if .Values.infrastructure.mlflow.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  labels:
+    app: mlflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: mlflow
+          image: ghcr.io/mlflow/mlflow:v2.11.3
+          command:
+            - mlflow
+            - server
+            - --host
+            - 0.0.0.0
+            - --port
+            - "5000"
+            - --backend-store-uri
+            - sqlite:////mlflow/mlflow.db
+            - --default-artifact-root
+            - s3://model-artifacts
+          ports:
+            - containerPort: {{ .Values.infrastructure.mlflow.port }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: "minioadmin"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "minioadmin"
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://minio:9000"
+            - name: AWS_ENDPOINT_URL
+              value: "http://minio:9000"
+          volumeMounts:
+            - name: mlflow-data
+              mountPath: /mlflow
+      volumes:
+        - name: mlflow-data
+          persistentVolumeClaim:
+            claimName: mlflow-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+spec:
+  selector:
+    app: mlflow
+  ports:
+    - protocol: TCP
+      port: {{ .Values.infrastructure.mlflow.port }}
+      targetPort: {{ .Values.infrastructure.mlflow.port }}
+{{- end }}
