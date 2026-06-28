@@ -1,6 +1,8 @@
 import asyncio
+import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import io
 import sys
 import types
 import unittest
@@ -71,6 +73,22 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
         main.round_expected_agents.clear()
         main.round_events.clear()
         main.agent_profiles.clear()
+        main.round_state_snapshots.clear()
+
+        class _NoopStore:
+            available = False
+
+            def save_json(self, _key, _value):
+                return None
+
+            def load_json(self, _key, default):
+                return default
+
+        self._original_store = main.WORKFLOW_STATE_STORE
+        main.WORKFLOW_STATE_STORE = _NoopStore()
+
+    async def asyncTearDown(self):
+        main.WORKFLOW_STATE_STORE = self._original_store
 
     async def test_submit_update_marks_round_complete_when_expected_agents_arrive(self):
         round_id = "round-1"
@@ -144,10 +162,66 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
             "current_step": "init",
         }
 
-        result = await main.select_agents(state)
+        async def fake_get_governance_agent(_client, agent_id):
+            return {
+                "agent_id": agent_id,
+                "active": True,
+                "allowed_asset_types": ["CBDC"],
+                "minimum_reliability_score": 0.0,
+            }
+
+        async def fake_runtime_snapshot(_client, agent_url):
+            return {
+                "agent_url": agent_url,
+                "reachable": True,
+                "healthy": True,
+                "status": {"last_participation_decision": {"allowed": True}, "last_metrics": {"accuracy": 0.9}},
+                "error": None,
+            }
+
+        with patch.object(main, "_get_governance_agent", new=AsyncMock(side_effect=fake_get_governance_agent)):
+            with patch.object(main, "_get_agent_runtime_snapshot", new=AsyncMock(side_effect=fake_runtime_snapshot)):
+                result = await main.select_agents(state)
 
         self.assertEqual(result["active_agents"], main.LOCAL_AGENT_URLS)
+        self.assertEqual(main.round_expected_agents["round-select"], main.LOCAL_AGENT_URLS)
         self.assertEqual(result["current_step"], "training_triggered")
+
+    async def test_trigger_training_passes_selected_strategy_and_fedprox_mu_to_local_agents(self):
+        state = {
+            "round_id": "round-fedprox",
+            "active_agents": ["http://agent-a"],
+            "updates_received": [],
+            "valid_updates": [],
+            "rejected_updates": [],
+            "aggregation_complete": False,
+            "metrics": {},
+            "policies": main._normalize_global_policies({"fedprox_mu": 0.75}),
+            "selected_strategy": "FedProxGNN",
+            "current_step": "training_triggered",
+        }
+
+        class FakeAsyncClient:
+            def __init__(self):
+                self.calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, url, params=None, json=None, timeout=None):
+                self.calls.append({"url": url, "params": params, "json": json, "timeout": timeout})
+                return FakeResponse({"status": "success"}, status_code=200)
+
+        fake_client = FakeAsyncClient()
+        with patch.object(main.httpx, "AsyncClient", return_value=fake_client):
+            result = await main.trigger_training(state)
+
+        self.assertEqual(result["current_step"], "waiting_for_updates")
+        self.assertEqual(fake_client.calls[0]["params"]["selected_strategy"], "FedProxGNN")
+        self.assertEqual(fake_client.calls[0]["params"]["fedprox_mu"], 0.75)
 
     async def test_submit_update_rejects_unprotected_payload(self):
         update = main.UpdateSubmission(
@@ -406,6 +480,59 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rejected_updates[0]["agent_id"], "agent-c")
         self.assertEqual(rejected_updates[0]["reason"], "peer_accuracy_outlier")
 
+    async def test_validate_updates_rejects_model_delta_anomalies(self):
+        try:
+            import torch
+        except ModuleNotFoundError:
+            self.skipTest("torch is not installed in the test environment")
+
+        def encode_state(values):
+            buffer = io.BytesIO()
+            torch.save({"layer": torch.tensor(values, dtype=torch.float32)}, buffer)
+            return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        policies = main._normalize_global_policies({"min_update_accuracy": 0.0, "require_encrypted_updates": False})
+        updates = [
+            main.UpdateSubmission(
+                agent_id="agent-a",
+                round_id="round-delta",
+                weights=encode_state([1.0, 1.0, 1.0]),
+                sample_size=10,
+                metrics={"accuracy": 0.9, "f1_score": 0.88, "loss": 0.2},
+                privacy_applied=True,
+            ),
+            main.UpdateSubmission(
+                agent_id="agent-b",
+                round_id="round-delta",
+                weights=encode_state([1.05, 0.95, 1.0]),
+                sample_size=10,
+                metrics={"accuracy": 0.91, "f1_score": 0.89, "loss": 0.22},
+                privacy_applied=True,
+            ),
+            main.UpdateSubmission(
+                agent_id="agent-c",
+                round_id="round-delta",
+                weights=encode_state([0.98, 1.02, 1.01]),
+                sample_size=10,
+                metrics={"accuracy": 0.92, "f1_score": 0.9, "loss": 0.21},
+                privacy_applied=True,
+            ),
+            main.UpdateSubmission(
+                agent_id="agent-d",
+                round_id="round-delta",
+                weights=encode_state([20.0, 20.0, 20.0]),
+                sample_size=10,
+                metrics={"accuracy": 0.9, "f1_score": 0.88, "loss": 0.2},
+                privacy_applied=True,
+            ),
+        ]
+
+        valid_updates, rejected_updates = main._validate_updates(updates, policies)
+
+        self.assertEqual([update.agent_id for update in valid_updates], ["agent-a", "agent-b", "agent-c"])
+        self.assertTrue(any(rejection["reason"] == "model_delta_anomaly_detected" for rejection in rejected_updates))
+        self.assertTrue(any(rejection["agent_id"] == "agent-d" for rejection in rejected_updates))
+
     async def test_validate_updates_requires_secure_aggregation_mask_when_encryption_is_required(self):
         policies = main._normalize_global_policies({"require_encrypted_updates": True})
         updates = [
@@ -450,11 +577,130 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
                 "minimum_reliability_score": 0.0,
             }
 
+        async def fake_runtime_snapshot(_client, agent_url):
+            return {
+                "agent_url": agent_url,
+                "reachable": True,
+                "healthy": True,
+                "status": {"last_participation_decision": {"allowed": True}, "last_metrics": {"accuracy": 0.9}},
+                "error": None,
+            }
+
         with patch.object(main, "LOCAL_AGENT_URLS", ["http://agent-a", "http://agent-b"]):
             with patch.object(main, "_get_governance_agent", new=AsyncMock(side_effect=fake_get_governance_agent)):
-                result = await main.select_agents(state)
+                with patch.object(main, "_get_agent_runtime_snapshot", new=AsyncMock(side_effect=fake_runtime_snapshot)):
+                    result = await main.select_agents(state)
 
         self.assertEqual(result["active_agents"], ["http://agent-a"])
+
+    async def test_select_agents_filters_runtime_unready_agents(self):
+        main.agent_profiles["http://agent-a"] = {"accepted_updates": 2.0, "rejected_updates": 0.0, "reliability_score": 1.0, "last_accuracy": 0.95}
+        main.agent_profiles["http://agent-b"] = {"accepted_updates": 2.0, "rejected_updates": 0.0, "reliability_score": 1.0, "last_accuracy": 0.95}
+        state = {
+            "round_id": "round-select-runtime",
+            "active_agents": [],
+            "updates_received": [],
+            "valid_updates": [],
+            "rejected_updates": [],
+            "aggregation_complete": False,
+            "metrics": {},
+            "policies": main._normalize_global_policies({"minimum_agent_reliability_score": 0.5, "min_update_accuracy": 0.5}),
+            "selected_strategy": "FedAvg",
+            "current_step": "init",
+        }
+
+        async def fake_get_governance_agent(_client, agent_id):
+            return {
+                "agent_id": agent_id,
+                "active": True,
+                "allowed_asset_types": ["CBDC"],
+                "minimum_reliability_score": 0.0,
+            }
+
+        async def fake_runtime_snapshot(_client, agent_url):
+            if agent_url == "http://agent-b":
+                return {
+                    "agent_url": agent_url,
+                    "reachable": True,
+                    "healthy": True,
+                    "status": {
+                        "last_participation_decision": {"allowed": False, "reason": "Privacy budget depleted"},
+                        "last_metrics": {"accuracy": 0.92},
+                    },
+                    "error": None,
+                }
+            return {
+                "agent_url": agent_url,
+                "reachable": True,
+                "healthy": True,
+                "status": {
+                    "last_participation_decision": {"allowed": True, "reason": "Participation approved"},
+                    "last_metrics": {"accuracy": 0.93},
+                },
+                "error": None,
+            }
+
+        with patch.object(main, "LOCAL_AGENT_URLS", ["http://agent-a", "http://agent-b"]):
+            with patch.object(main, "_get_governance_agent", new=AsyncMock(side_effect=fake_get_governance_agent)):
+                with patch.object(main, "_get_agent_runtime_snapshot", new=AsyncMock(side_effect=fake_runtime_snapshot)):
+                    result = await main.select_agents(state)
+
+        self.assertEqual(result["active_agents"], ["http://agent-a"])
+        self.assertEqual(main.round_expected_agents["round-select-runtime"], ["http://agent-a"])
+
+    async def test_start_round_tracks_only_selected_agents(self):
+        class FakeGraph:
+            async def ainvoke(self, state):
+                state["active_agents"] = ["http://agent-a"]
+                state["current_step"] = "round_complete"
+                return state
+
+        with patch.object(main, "app_graph", FakeGraph()):
+            response = await main.start_round("round-selected")
+
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(main.round_expected_agents["round-selected"], ["http://agent-a"])
+
+    async def test_load_persisted_workflow_state_restores_round_updates_and_snapshots(self):
+        persisted_update = main.UpdateSubmission(
+            agent_id="agent-a",
+            round_id="round-persisted",
+            weights="dGVzdA==",
+            sample_size=10,
+            metrics={"accuracy": 0.9, "f1_score": 0.88, "loss": 0.2},
+            privacy_applied=True,
+        )
+
+        class FakeStore:
+            available = True
+
+            def __init__(self):
+                self.data = {
+                    main.WORKFLOW_STATE_UPDATES_KEY: {
+                        "round-persisted": [persisted_update.model_dump(mode="json")],
+                    },
+                    main.WORKFLOW_STATE_EXPECTED_KEY: {"round-persisted": ["agent-a"]},
+                    main.WORKFLOW_STATE_PROFILES_KEY: {"agent-a": {"accepted_updates": 1.0, "rejected_updates": 0.0, "reliability_score": 1.0, "last_accuracy": 0.9}},
+                    main.WORKFLOW_STATE_SNAPSHOTS_KEY: {
+                        "round-persisted": {"round_id": "round-persisted", "current_step": "waiting_for_updates", "update_count": 1}
+                    },
+                }
+
+            def save_json(self, key, value):
+                self.data[key] = value
+
+            def load_json(self, key, default):
+                return self.data.get(key, default)
+
+        fake_store = FakeStore()
+        main.WORKFLOW_STATE_STORE = fake_store
+
+        main._load_persisted_workflow_state()
+
+        self.assertEqual(list(main.round_updates["round-persisted"][0].metrics.keys()), ["accuracy", "f1_score", "loss"])
+        self.assertEqual(main.round_expected_agents["round-persisted"], ["agent-a"])
+        self.assertEqual(main.round_state_snapshots["round-persisted"]["current_step"], "waiting_for_updates")
+        self.assertIn("round-persisted", main.round_events)
 
     async def test_select_aggregation_strategy_can_switch_to_weighted_fedavg(self):
         updates = [
@@ -530,7 +776,7 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
                 self.resp_idx = 0
             async def __aenter__(self): return self
             async def __aexit__(self, exc_type, exc, tb): return False
-            async def post(self, url, json=None, timeout=None):
+            async def post(self, url, json=None, timeout=None, _timeout=None):
                 self.calls.append({"url": url, "json": json})
                 r = responses[self.resp_idx]
                 self.resp_idx = (self.resp_idx + 1) % len(responses)
@@ -568,12 +814,12 @@ class TestAgenticCoordinator(unittest.IsolatedAsyncioTestCase):
                 self.resp_idx = 0
             async def __aenter__(self): return self
             async def __aexit__(self, exc_type, exc, tb): return False
-            async def post(self, url, json=None, timeout=None):
+            async def post(self, url, json=None, timeout=None, _timeout=None):
                 self.calls.append({"method": "POST", "url": url, "json": json})
                 r = responses[self.resp_idx]
                 self.resp_idx = (self.resp_idx + 1) % len(responses)
                 return r
-            async def get(self, url, timeout=None):
+            async def get(self, url, timeout=None, _timeout=None):
                 self.calls.append({"method": "GET", "url": url})
                 r = responses[self.resp_idx]
                 self.resp_idx = (self.resp_idx + 1) % len(responses)

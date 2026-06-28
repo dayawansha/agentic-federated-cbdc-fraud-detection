@@ -542,5 +542,116 @@ class TestBootstrapInsertThenQuery(unittest.TestCase):
         self.assertEqual(features["tx_count_7d"], 0)
 
 
+class TestExportTensors(unittest.TestCase):
+    @patch("services.graph_service.GraphService.get_account_features")
+    @patch("services.graph_service.db")
+    def test_export_tensors_returns_expected_format(self, mock_db, mock_account_features):
+        mock_session = MagicMock()
+        mock_db.get_session.return_value.__enter__.return_value = mock_session
+
+        mock_account_features.side_effect = [
+            {
+                "total_tx_count": 5,
+                "total_amount": 140.0,
+                "avg_amount": 28.0,
+                "counterparty_diversity": 3,
+                "reciprocal_counterparties": 1,
+                "two_hop_reach": 6,
+                "in_degree": 2,
+                "out_degree": 5,
+                "betweenness_proxy": 0.4,
+                "pagerank_approx": 1.2,
+                "tx_count_1h": 1,
+                "tx_count_24h": 2,
+                "tx_count_7d": 5,
+                "velocity_7d": 0.03,
+                "burst_ratio": 0.5,
+                "net_flow": -60.0,
+                "in_out_ratio": 0.4,
+            },
+            {
+                "total_tx_count": 4,
+                "total_amount": 90.0,
+                "avg_amount": 22.5,
+                "counterparty_diversity": 2,
+                "reciprocal_counterparties": 0,
+                "two_hop_reach": 4,
+                "in_degree": 4,
+                "out_degree": 1,
+                "betweenness_proxy": 0.2,
+                "pagerank_approx": 0.7,
+                "tx_count_1h": 0,
+                "tx_count_24h": 1,
+                "tx_count_7d": 4,
+                "velocity_7d": 0.02,
+                "burst_ratio": 0.0,
+                "net_flow": 45.0,
+                "in_out_ratio": 4.0,
+            },
+        ]
+
+        mock_record_node = {
+            "tx_id": "tx-1",
+            "source_account_id": "acct-src",
+            "target_account_id": "acct-tgt",
+            "amount": 100.0,
+            "asset_type": "CBDC",
+            "timestamp": "2026-06-24T12:00:00+00:00",
+        }
+        mock_record_edge = {
+            "source": "tx-1",
+            "target": "tx-1"
+        }
+
+        mock_session.run.side_effect = [
+            [mock_record_node],
+            [mock_record_edge],
+        ]
+
+        result = GraphService.export_tensors()
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["node_type"], "transaction")
+        self.assertEqual(result["node_ids"], ["tx-1"])
+        self.assertEqual(len(result["x"]), 1)
+        self.assertEqual(len(result["x"][0]), len(GraphService.TRANSACTION_EXPORT_FEATURE_NAMES))
+        self.assertEqual(result["x"][0][0], 100.0)
+        self.assertEqual(result["feature_names"], GraphService.TRANSACTION_EXPORT_FEATURE_NAMES)
+        self.assertEqual(result["edge_index"], [[0], [0]])
+
+    @patch("services.graph_service.db")
+    def test_export_tensors_handles_database_errors_gracefully(self, mock_db):
+        mock_db.get_session.side_effect = Exception("Neo4j is down")
+        result = GraphService.export_tensors()
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["node_ids"], [])
+        self.assertEqual(result["x"], [])
+        self.assertEqual(result["edge_index"], [[], []])
+
+
+class TestExportTensorsAPI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from main import app
+        from fastapi.testclient import TestClient
+        cls.client = TestClient(app)
+
+    @patch("main.graph_service")
+    def test_export_tensors_endpoint(self, mock_service):
+        mock_service.export_tensors.return_value = {
+            "status": "success",
+            "node_type": "transaction",
+            "feature_schema_version": 2,
+            "feature_names": ["tx_amount"],
+            "node_ids": ["tx-1"],
+            "x": [[1.0, 2.0]],
+            "edge_index": [[0], [0]]
+        }
+        response = self.client.get("/graph/export-tensors")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["node_ids"], ["tx-1"])
+
+
 if __name__ == "__main__":
     unittest.main()

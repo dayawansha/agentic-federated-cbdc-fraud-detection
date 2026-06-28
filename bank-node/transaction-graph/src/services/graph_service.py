@@ -1,3 +1,24 @@
+"""
+================================================================================
+GRAPH SERVICE ENGINE - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of the GraphService as the "network analysis engine." It runs queries on Neo4j
+(using Cypher) to extract key patterns that help the GNN spot money laundering.
+
+It extracts structural network statistics for accounts and transactions, including:
+1. DEGREE (In-Degree & Out-Degree): Measures the number of incoming and outgoing
+   connections. Accounts connected to an unusually high number of other accounts
+   are suspicious.
+2. PAGERANK & BETWEENNESS PROXY: Measures how "central" or "influential" an account is.
+   An account acting as a central hub (a bridge) between many disconnected groups
+   is a typical money laundering mule sign.
+3. VELOCITY (1h, 24h, 7d): Tracks transaction counts over short, medium, and long
+   durations. A sudden burst of payments (burst ratio) or rapid pass-through of funds
+   (net flow, in-out ratio) indicates potential shell company activity.
+4. RECIPROCAL COUNTERPARTIES: Identifies accounts sending funds back and forth
+   repeatedly to generate fake volume.
+================================================================================
+"""
 import logging
 from database import db
 from datetime import datetime
@@ -6,6 +27,105 @@ logger = logging.getLogger(__name__)
 
 
 class GraphService:
+    TRANSACTION_EXPORT_FEATURE_NAMES = [
+        "tx_amount",
+        "source_total_tx_count",
+        "source_total_amount",
+        "source_avg_amount",
+        "source_counterparty_diversity",
+        "source_reciprocal_counterparties",
+        "source_two_hop_reach",
+        "source_in_degree",
+        "source_out_degree",
+        "source_betweenness_proxy",
+        "source_pagerank_approx",
+        "source_tx_count_1h",
+        "source_tx_count_24h",
+        "source_tx_count_7d",
+        "source_velocity_7d",
+        "source_burst_ratio",
+        "source_net_flow",
+        "source_in_out_ratio",
+        "target_total_tx_count",
+        "target_total_amount",
+        "target_avg_amount",
+        "target_counterparty_diversity",
+        "target_reciprocal_counterparties",
+        "target_two_hop_reach",
+        "target_in_degree",
+        "target_out_degree",
+        "target_betweenness_proxy",
+        "target_pagerank_approx",
+        "target_tx_count_1h",
+        "target_tx_count_24h",
+        "target_tx_count_7d",
+        "target_velocity_7d",
+        "target_burst_ratio",
+        "target_net_flow",
+        "target_in_out_ratio",
+        "tx_age_hours",
+    ]
+
+    @staticmethod
+    def _parse_tx_age_hours(timestamp_value) -> float:
+        if not timestamp_value:
+            return 0.0
+        try:
+            parsed = datetime.fromisoformat(str(timestamp_value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                age_seconds = (datetime.now() - parsed).total_seconds()
+            else:
+                age_seconds = (datetime.now(parsed.tzinfo) - parsed).total_seconds()
+            return max(0.0, age_seconds / 3600.0)
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _transaction_feature_vector(
+        source_features: dict,
+        target_features: dict,
+        amount: float,
+        timestamp_value,
+    ) -> list[float]:
+        return [
+            float(amount),
+            float(source_features.get("total_tx_count", 0.0)),
+            float(source_features.get("total_amount", 0.0)),
+            float(source_features.get("avg_amount", 0.0)),
+            float(source_features.get("counterparty_diversity", 0.0)),
+            float(source_features.get("reciprocal_counterparties", 0.0)),
+            float(source_features.get("two_hop_reach", 0.0)),
+            float(source_features.get("in_degree", 0.0)),
+            float(source_features.get("out_degree", 0.0)),
+            float(source_features.get("betweenness_proxy", 0.0)),
+            float(source_features.get("pagerank_approx", 0.0)),
+            float(source_features.get("tx_count_1h", 0.0)),
+            float(source_features.get("tx_count_24h", 0.0)),
+            float(source_features.get("tx_count_7d", 0.0)),
+            float(source_features.get("velocity_7d", 0.0)),
+            float(source_features.get("burst_ratio", 0.0)),
+            float(source_features.get("net_flow", 0.0)),
+            float(source_features.get("in_out_ratio", 0.0)),
+            float(target_features.get("total_tx_count", 0.0)),
+            float(target_features.get("total_amount", 0.0)),
+            float(target_features.get("avg_amount", 0.0)),
+            float(target_features.get("counterparty_diversity", 0.0)),
+            float(target_features.get("reciprocal_counterparties", 0.0)),
+            float(target_features.get("two_hop_reach", 0.0)),
+            float(target_features.get("in_degree", 0.0)),
+            float(target_features.get("out_degree", 0.0)),
+            float(target_features.get("betweenness_proxy", 0.0)),
+            float(target_features.get("pagerank_approx", 0.0)),
+            float(target_features.get("tx_count_1h", 0.0)),
+            float(target_features.get("tx_count_24h", 0.0)),
+            float(target_features.get("tx_count_7d", 0.0)),
+            float(target_features.get("velocity_7d", 0.0)),
+            float(target_features.get("burst_ratio", 0.0)),
+            float(target_features.get("net_flow", 0.0)),
+            float(target_features.get("in_out_ratio", 0.0)),
+            GraphService._parse_tx_age_hours(timestamp_value),
+        ]
+
     @staticmethod
     def add_transaction(tx_data: dict):
         """
@@ -399,6 +519,104 @@ class GraphService:
         base["last_tx_timestamp"]   = temporal["last_tx_timestamp"]
 
         return base
+
+    @staticmethod
+    def export_tensors() -> dict:
+        """
+        Exports the live graph as transaction nodes so the GNN can train against
+        transaction-level labels instead of account identifiers. Each transaction
+        feature vector includes richer graph-derived source/target account context.
+        """
+        query_nodes = (
+            "MATCH (src:Account)-[:SENDS]->(tx:Transaction)-[:RECEIVES]->(tgt:Account) "
+            "RETURN tx.id AS tx_id, "
+            "src.id AS source_account_id, "
+            "tgt.id AS target_account_id, "
+            "coalesce(tx.amount, 0.0) AS amount, "
+            "coalesce(tx.asset_type, 'CBDC') AS asset_type, "
+            "tx.timestamp AS timestamp "
+            "ORDER BY tx_id"
+        )
+
+        query_edges = (
+            "MATCH (tx1:Transaction)<-[:SENDS]-(shared_src:Account)-[:SENDS]->(tx2:Transaction) "
+            "WHERE tx1 <> tx2 "
+            "RETURN DISTINCT tx1.id AS source, tx2.id AS target "
+            "UNION "
+            "MATCH (tx1:Transaction)-[:RECEIVES]->(shared_tgt:Account)<-[:RECEIVES]-(tx2:Transaction) "
+            "WHERE tx1 <> tx2 "
+            "RETURN DISTINCT tx1.id AS source, tx2.id AS target "
+            "UNION "
+            "MATCH (tx1:Transaction)-[:RECEIVES]->(mid:Account)-[:SENDS]->(tx2:Transaction) "
+            "WHERE tx1 <> tx2 "
+            "RETURN DISTINCT tx1.id AS source, tx2.id AS target"
+        )
+
+        try:
+            with db.get_session() as session:
+                res_nodes = session.run(query_nodes)
+                nodes = []
+                features = []
+                node_map = {}
+                account_feature_cache = {}
+
+                def get_cached_account_features(account_id: str) -> dict:
+                    if account_id not in account_feature_cache:
+                        account_feature_cache[account_id] = GraphService.get_account_features(account_id)
+                    return account_feature_cache[account_id]
+
+                for r in res_nodes:
+                    tx_id = r["tx_id"]
+                    if not tx_id:
+                        continue
+                    source_account_id = r["source_account_id"]
+                    target_account_id = r["target_account_id"]
+                    source_features = get_cached_account_features(source_account_id)
+                    target_features = get_cached_account_features(target_account_id)
+
+                    node_map[tx_id] = len(nodes)
+                    nodes.append(tx_id)
+                    features.append(
+                        GraphService._transaction_feature_vector(
+                            source_features=source_features,
+                            target_features=target_features,
+                            amount=float(r["amount"] or 0.0),
+                            timestamp_value=r["timestamp"],
+                        )
+                    )
+
+                res_edges = session.run(query_edges)
+                src_list = []
+                tgt_list = []
+                for r in res_edges:
+                    src_id = r["source"]
+                    tgt_id = r["target"]
+                    if src_id in node_map and tgt_id in node_map:
+                        src_list.append(node_map[src_id])
+                        tgt_list.append(node_map[tgt_id])
+                
+                edge_index = [src_list, tgt_list]
+                return {
+                    "status": "success",
+                    "node_type": "transaction",
+                    "feature_schema_version": 2,
+                    "feature_names": list(GraphService.TRANSACTION_EXPORT_FEATURE_NAMES),
+                    "node_ids": nodes,
+                    "x": features,
+                    "edge_index": edge_index
+                }
+        except Exception as exc:
+            logger.error("Failed to export tensors: %s", exc)
+            return {
+                "status": "error",
+                "detail": str(exc),
+                "node_type": "transaction",
+                "feature_schema_version": 2,
+                "feature_names": list(GraphService.TRANSACTION_EXPORT_FEATURE_NAMES),
+                "node_ids": [],
+                "x": [],
+                "edge_index": [[], []]
+            }
 
 
 graph_service = GraphService()

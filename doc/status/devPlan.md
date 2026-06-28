@@ -3,12 +3,12 @@
 
 **Version:** 2.0  
 **Created:** February 2026  
-**Updated:** June 15, 2026  
-**Status:** Active Development (MVP Running)  
+**Updated:** June 24, 2026  
+**Status:** MVP Running with Core Design-Gap Fixes Applied  
 **Architecture:** Microservice Architecture
 
 > [!IMPORTANT]
-> This document combines the **current MVP implementation plan** with a **target-state roadmap**. The current prototype uses REST for the federated control plane, Kafka for transaction and alert streams, PostgreSQL-backed policy/registry metadata, and local-disk model artifacts. References to SAGA, Flower, Debezium, MinIO/S3, and MLflow should be read as future-evolution options unless a status note says they are already implemented.
+> This document combines the **current MVP implementation plan** with a **target-state roadmap**. The current prototype uses REST for the federated control plane, Kafka for transaction and alert streams, PostgreSQL-backed policy/registry/alert metadata, Redis-backed coordinator workflow state when configured, and local-disk or S3/MinIO model artifacts. References to SAGA, Flower, Debezium, and other advanced extensions should be read as future-evolution options unless a status note says they are already implemented.
 
 ---
 
@@ -83,8 +83,9 @@ graph TB
     
     LA -->|REST| LG
     LA -->|REST| PL
-    LG <-->|REST| TG
+    LG <-->|REST / Live Graph Export| TG
     FD <-->|REST| LA
+    FD <-->|REST / WebSocket| AL
     AL <-->|Kafka| TG
     
     TG --> KF
@@ -235,7 +236,8 @@ responsibilities:
   - Orchestrate federated learning rounds
   - Select participating bank nodes
   - Adaptive scheduling based on node performance
-  - Policy-aware gating and suspicious-update screening
+  - Policy-aware gating, runtime readiness checks, and suspicious-update screening
+  - Persist/restore workflow state snapshots
 communication:
   - REST → Federated Model Aggregator (Internal)
   - REST → Policy Manager (Internal)
@@ -243,6 +245,7 @@ communication:
 dependencies:
   - Policy Manager
   - Model Registry
+  - Redis (workflow durability when configured)
 ```
 
 ### 4.2 Federated Model Aggregator (FedAvg/FedGNN)
@@ -258,7 +261,7 @@ technology:
   - FastAPI
 responsibilities:
   - Receive protected model updates
-  - Perform FedAvg aggregation
+  - Perform strategy-aware aggregation (`FedAvg`, `WeightedFedAvg`, `PerformanceWeightedFedAvg`, `AdaptiveFedAvg`)
   - Decrypt encrypted payloads when provided
   - Return aggregated global model weights
 communication:
@@ -327,6 +330,7 @@ responsibilities:
   - Coordinate local services
   - Submit model updates
   - Anomaly detection response
+  - Privacy/policy/resource-aware participation gating
 communication:
   - REST → Agentic Coordinator (External)
   - REST → Local GNN, Privacy Layer (Internal)
@@ -349,10 +353,10 @@ technology:
 responsibilities:
   - Local model training
   - Fraud inference
-  - Feature extraction from graphs
+  - Feature extraction from live transaction graphs
 communication:
   - REST ← Local Agent
-  - REST → Transaction Graph
+  - REST ↔ Transaction Graph
 dependencies:
   - Transaction Graph
   - CUDA/GPU (optional)
@@ -373,6 +377,7 @@ responsibilities:
   - Apply differential privacy to model weights
   - Encrypt model updates
   - Provide protected update transport utilities
+  - Prepare escrowed secure updates with per-round key agreement
 communication:
   - REST ← Local Agent
 dependencies:
@@ -398,6 +403,7 @@ responsibilities:
   - Real-time graph updates and event publication
 communication:
   - REST ← Local GNN
+  - REST → Local GNN (transaction-aligned tensor export)
   - Events → Kafka (transaction events)
   - Neo4j (graph storage)
 dependencies:
@@ -422,9 +428,10 @@ responsibilities:
   - Alert management UI
 communication:
   - HTTP → Local Agent
-  - WebSocket (real-time updates)
+  - REST / WebSocket → Alerting
 dependencies:
   - Local Agent API
+  - Alerting API / WebSocket
 ```
 
 ### 4.10 Alerting (Email/Ticket)
@@ -440,12 +447,14 @@ technology:
   - Python 3.11+
   - FastAPI
 responsibilities:
+  - Detect suspicious transactions from transaction events
   - Generate fraud alerts
   - Email notifications
   - Ticket creation (Jira/ServiceNow)
   - Alert lifecycle management
 communication:
-  - Kafka ← Transaction Graph (fraud events)
+  - Kafka ← Transaction Graph (`transactions.events`)
+  - Kafka → `fraud.alerts`
   - REST → Notification Providers (Internal)
 dependencies:
   - Kafka
@@ -468,8 +477,8 @@ dependencies:
 | **Message Queue** | Apache Kafka | Event streaming |
 | **CDC** | Service-level event publication | Lightweight data propagation |
 | **Graph Database** | Neo4j | Transaction graphs |
-| **Relational DB** | PostgreSQL | Metadata storage |
-| **Cache** | In-memory service state | Round coordination state in MVP |
+| **Relational DB** | PostgreSQL | Policy, registry, and alert metadata/history |
+| **Cache / State Store** | Redis + in-memory fallback | Coordinator workflow durability and runtime state |
 | **Object Storage** | Local disk artifacts | Model artifacts |
 | **Frontend** | React.js | Dashboard UI |
 | **Container** | Docker | Service packaging |
@@ -582,11 +591,11 @@ sequenceDiagram
 
 ## 9. Next Steps
 
-1. [ ] Add deeper temporal and centrality-based graph features where they materially improve model inputs
-2. [ ] Complete CDC pipeline setup where it materially improves real-time propagation beyond the current local demo/replay workflow
-3. [ ] Add performance benchmarking and privacy/security audit follow-through for the locally validated MVP
-4. [ ] Keep CI/CD deferred unless local-first delivery needs change or AWS deployment becomes active
+1. [ ] Expand federated aggregation beyond the current linear strategy family and strengthen adversarial update defenses
+2. [ ] Advance secure aggregation toward dropout-tolerant secret-sharing or pairwise-mask recovery
+3. [ ] Add label-scarce or semi-supervised live graph learning support for production-style transaction streams
+4. [ ] Expand experiment tracking and evaluation artifacts for scalability, drift, privacy, and adversarial scenarios
 
 ---
 
-*Last Updated: June 15, 2026*
+*Last Updated: June 24, 2026*

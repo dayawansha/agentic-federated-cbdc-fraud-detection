@@ -53,14 +53,49 @@ class FakeDataObject:
     def __init__(self):
         self.tx_ids = [11, 22, 33]
         self.y = FakeLabelArray([1, 0, 2])
+        self.x = types.SimpleNamespace(shape=(3, 12))
+        self.live_graph_used = False
+        self.data_source = "static"
+        self.sparse_label_mode = False
+        self.unlabeled_count = 1
+        self.exported_feature_count = 12
 
 
 class FakeTrainer:
     def __init__(self):
         self.set_weights_calls = []
+        self.configure_calls = []
+        self.capture_calls = 0
+        self.clear_calls = 0
+        self.last_base_loss = 0.33
+        self.last_proximal_penalty = 0.09
 
     def set_model_weights(self, payload):
         self.set_weights_calls.append(payload)
+
+    def configure_training(
+        self,
+        strategy="FedAvg",
+        fedprox_mu=0.0,
+        sparse_label_mode=False,
+        pseudo_label_weight=0.0,
+        pseudo_label_confidence=0.9,
+    ):
+        self.configure_calls.append(
+            {
+                "strategy": strategy,
+                "fedprox_mu": fedprox_mu,
+                "sparse_label_mode": sparse_label_mode,
+                "pseudo_label_weight": pseudo_label_weight,
+                "pseudo_label_confidence": pseudo_label_confidence,
+            }
+        )
+
+    def capture_proximal_reference(self):
+        self.capture_calls += 1
+
+    def clear_proximal_reference(self):
+        self.clear_calls += 1
 
     def train_epoch(self, _data):
         return 0.42
@@ -130,7 +165,12 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
 
     async def test_trigger_training_returns_metrics_and_sample_size(self):
         trainer = FakeTrainer()
-        data = types.SimpleNamespace(y=types.SimpleNamespace(__eq__=None))
+        data = types.SimpleNamespace(y=types.SimpleNamespace(__eq__=None), x=types.SimpleNamespace(shape=(3, 12)))
+        data.live_graph_used = False
+        data.data_source = "static"
+        data.sparse_label_mode = False
+        data.unlabeled_count = 1
+        data.exported_feature_count = 12
 
         class FakeMask:
             def __or__(self, _other):
@@ -160,8 +200,98 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.metrics["f1_score"], 0.825)
         self.assertEqual(response.metrics["roc_auc"], 0.91)
         self.assertEqual(response.metrics["loss"], 0.42)
+        self.assertEqual(response.metrics["graph_node_count"], 3.0)
+        self.assertEqual(response.metrics["graph_edge_count"], 0.0)
+        self.assertEqual(response.metrics["avg_degree"], 0.0)
+        self.assertEqual(response.metrics["graph_density"], 0.0)
+        self.assertAlmostEqual(response.metrics["labeled_ratio"], 2.0 / 3.0)
+        self.assertEqual(response.metrics["live_graph_used"], 0.0)
+        self.assertEqual(response.metrics["data_source_live"], 0.0)
+        self.assertEqual(response.metrics["sparse_label_mode"], 0.0)
+        self.assertEqual(response.metrics["unlabeled_samples"], 1.0)
+        self.assertEqual(response.metrics["pseudo_label_weight"], 0.35)
+        self.assertEqual(response.metrics["pseudo_label_confidence"], 0.9)
         self.assertEqual(base64.b64decode(response.weights), b"trained-weights")
         self.assertEqual(trainer.set_weights_calls, [b"global"])
+        self.assertEqual(
+            trainer.configure_calls,
+            [
+                {
+                    "strategy": "FedAvg",
+                    "fedprox_mu": 1.0,
+                    "sparse_label_mode": False,
+                    "pseudo_label_weight": 0.35,
+                    "pseudo_label_confidence": 0.9,
+                }
+            ],
+        )
+        self.assertEqual(trainer.clear_calls, 1)
+        self.assertEqual(trainer.capture_calls, 0)
+
+    async def test_trigger_training_configures_true_fedprox_round(self):
+        trainer = FakeTrainer()
+        data = types.SimpleNamespace(
+            y=types.SimpleNamespace(__eq__=None),
+            x=types.SimpleNamespace(shape=(3, 12)),
+            edge_index=types.SimpleNamespace(shape=(2, 4)),
+        )
+        data.live_graph_used = True
+        data.data_source = "live"
+        data.sparse_label_mode = True
+        data.unlabeled_count = 1
+        data.exported_feature_count = 16
+
+        class FakeMask:
+            def __or__(self, _other):
+                return self
+
+            def sum(self):
+                return FakeValue(2)
+
+        class FakeLabels:
+            def __eq__(self, other):
+                return FakeMask()
+
+            def __or__(self, other):
+                return FakeMask()
+
+        data.y = FakeLabels()
+
+        encoded = base64.b64encode(b"global").decode("ascii")
+        with patch.object(main, "_init_trainer", return_value=trainer), patch.object(main, "_load_graph_data", return_value=data):
+            response = await main.trigger_training(
+                main.TrainRequest(
+                    global_weights=encoded,
+                    epochs=1,
+                    strategy="FedProxGNN",
+                    fedprox_mu=0.75,
+                    pseudo_label_weight=0.45,
+                    pseudo_label_confidence=0.82,
+                )
+            )
+
+        self.assertEqual(
+            trainer.configure_calls,
+            [
+                {
+                    "strategy": "FedProxGNN",
+                    "fedprox_mu": 0.75,
+                    "sparse_label_mode": True,
+                    "pseudo_label_weight": 0.45,
+                    "pseudo_label_confidence": 0.82,
+                }
+            ],
+        )
+        self.assertEqual(trainer.capture_calls, 1)
+        self.assertEqual(trainer.clear_calls, 0)
+        self.assertEqual(response.metrics["fedprox_mu"], 0.75)
+        self.assertEqual(response.metrics["fedprox_base_loss"], 0.33)
+        self.assertEqual(response.metrics["fedprox_penalty"], 0.09)
+        self.assertEqual(response.metrics["live_graph_used"], 1.0)
+        self.assertEqual(response.metrics["data_source_live"], 1.0)
+        self.assertEqual(response.metrics["sparse_label_mode"], 1.0)
+        self.assertEqual(response.metrics["pseudo_label_weight"], 0.45)
+        self.assertEqual(response.metrics["pseudo_label_confidence"], 0.82)
 
     async def test_run_inference_ranks_predictions_when_tx_ids_not_provided(self):
         trainer = FakeTrainer()
@@ -201,7 +331,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
             clear=False,
         ):
             main._init_trainer.cache_clear()
-            main._init_trainer()
+            main._init_trainer(data.x.shape[1])
 
         get_model_mock.assert_called_once_with(
             input_dim=12,
@@ -212,6 +342,10 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
             dropout=0.25,
         )
         trainer_cls.assert_called_once()
+
+    def test_extract_numeric_transaction_id_accepts_prefixed_transaction_ids(self):
+        self.assertEqual(main._extract_numeric_transaction_id("tx-42"), 42)
+        self.assertEqual(main._extract_numeric_transaction_id("transaction_0007"), 7)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART_DIR="${ROOT_DIR}/infrastructure/helm/federated-fraud-detection"
 VALUES_FILE="${CHART_DIR}/values.local-docker-desktop.yaml"
+source "${ROOT_DIR}/scripts/deploy_common.sh"
 
 RELEASE_NAME="${RELEASE_NAME:-federated-fraud}"
 NAMESPACE="${NAMESPACE:-default}"
@@ -14,32 +15,6 @@ LABEL_KEY="app-runtime"
 LABEL_VALUE="true"
 EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-docker-desktop}"
 SKIP_HELM=false
-
-IMAGES=(
-  "dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}"
-  "dusman/federated-fraud-federated-model-aggregator:${IMAGE_TAG}"
-  "dusman/federated-fraud-policy-manager:${IMAGE_TAG}"
-  "dusman/federated-fraud-model-registry:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-agent:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-gnn:${IMAGE_TAG}"
-  "dusman/federated-fraud-privacy-layer:${IMAGE_TAG}"
-  "dusman/federated-fraud-transaction-graph:${IMAGE_TAG}"
-  "dusman/federated-fraud-alerting:${IMAGE_TAG}"
-  "dusman/federated-fraud-fraud-dashboard:${IMAGE_TAG}"
-)
-
-APP_DEPLOYMENTS=(
-  "agentic-coordinator"
-  "federated-model-aggregator"
-  "policy-manager"
-  "model-registry"
-  "local-agent"
-  "local-gnn"
-  "privacy-layer"
-  "transaction-graph"
-  "alerting"
-  "fraud-dashboard"
-)
 
 usage() {
   cat <<EOF
@@ -58,13 +33,6 @@ Environment:
   RUNTIME_NODE         Same as --node
   EXPECTED_CONTEXT     Kubernetes context guard (default: docker-desktop)
 EOF
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Missing required command: $1" >&2
-    exit 1
-  fi
 }
 
 detect_runtime_node() {
@@ -90,33 +58,6 @@ detect_runtime_node() {
   echo "${node}"
 }
 
-check_context() {
-  local current_context
-  current_context="$(kubectl config current-context)"
-  if [[ "${current_context}" != "${EXPECTED_CONTEXT}" ]]; then
-    echo "Current kubectl context is '${current_context}', expected '${EXPECTED_CONTEXT}'." >&2
-    echo "Set EXPECTED_CONTEXT to override this guard if you intentionally want another local cluster." >&2
-    exit 1
-  fi
-}
-
-check_images() {
-  local missing=0
-  local image
-
-  for image in "${IMAGES[@]}"; do
-    if ! docker image inspect "${image}" >/dev/null 2>&1; then
-      echo "Missing local image: ${image}" >&2
-      missing=1
-    fi
-  done
-
-  if [[ "${missing}" -ne 0 ]]; then
-    echo "Build the missing images first, then rerun this script." >&2
-    exit 1
-  fi
-}
-
 import_images() {
   local runtime_node="$1"
   local image
@@ -124,15 +65,6 @@ import_images() {
   for image in "${IMAGES[@]}"; do
     echo "Importing ${image} into ${runtime_node}..."
     docker save "${image}" | docker exec -i "${runtime_node}" ctr -n k8s.io images import -
-  done
-}
-
-rollout_apps() {
-  local deployment
-
-  for deployment in "${APP_DEPLOYMENTS[@]}"; do
-    echo "Waiting for deployment/${deployment}..."
-    kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout=180s
   done
 }
 
@@ -170,12 +102,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+mapfile -t APP_DEPLOYMENTS < <(project_app_deployments)
+mapfile -t IMAGES < <(project_tagged_images "${IMAGE_TAG}")
+
 require_cmd docker
 require_cmd kubectl
 require_cmd helm
 
-check_context
-check_images
+ensure_expected_context "${EXPECTED_CONTEXT}" \
+  "Set EXPECTED_CONTEXT to override this guard if you intentionally want another local cluster."
+verify_local_images "Build the missing images first, then rerun this script." "${IMAGES[@]}"
 
 RUNTIME_NODE="$(detect_runtime_node)"
 
@@ -190,10 +126,9 @@ kubectl label node "${RUNTIME_NODE}" "${LABEL_KEY}=${LABEL_VALUE}" --overwrite
 import_images "${RUNTIME_NODE}"
 
 if [[ "${SKIP_HELM}" == "true" ]]; then
-  echo
-  echo "Images loaded into ${RUNTIME_NODE}."
-  echo "Run Helm separately with:"
-  echo "  helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} --namespace ${NAMESPACE} --create-namespace -f ${CHART_DIR}/values.yaml -f ${VALUES_FILE} --set-string global.image.tag=${IMAGE_TAG}"
+  print_helm_followup \
+    "Images loaded into ${RUNTIME_NODE}." \
+    "helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} --namespace ${NAMESPACE} --create-namespace -f ${CHART_DIR}/values.yaml -f ${VALUES_FILE} --set-string global.image.tag=${IMAGE_TAG}"
   exit 0
 fi
 
@@ -205,10 +140,11 @@ helm upgrade --install "${RELEASE_NAME}" "${CHART_DIR}" \
   -f "${VALUES_FILE}" \
   --set-string global.image.tag="${IMAGE_TAG}"
 
-rollout_apps
+rollout_deployments "${NAMESPACE}" "180s" "${APP_DEPLOYMENTS[@]}"
 
-echo
-echo "Docker Desktop local-cluster deployment is ready."
-echo "Runtime node: ${RUNTIME_NODE}"
-echo "Image tag: ${IMAGE_TAG}"
-kubectl get pods -n "${NAMESPACE}" -o wide
+print_deployment_summary \
+  "Docker Desktop local-cluster deployment is ready." \
+  "Runtime node" \
+  "${RUNTIME_NODE}" \
+  "${IMAGE_TAG}" \
+  "${NAMESPACE}"

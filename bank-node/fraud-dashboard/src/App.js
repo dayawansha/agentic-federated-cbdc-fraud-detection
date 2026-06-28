@@ -1,3 +1,29 @@
+/*
+================================================================================
+FRAUD DASHBOARD - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of the Fraud Dashboard as the "Control Center Screen" or "Cockpit" for the bank's
+fraud analysis team. 
+
+While the GNN models, database engines, and secure networks work invisibly in the
+background, this React application translates all that complex mathematics and data
+into clean, interactive charts and tables that a human officer can read in seconds.
+
+THE DASHBOARD EXPOSES FIVE KEY WORKSPACES:
+1. OVERVIEW SCREEN: Displays primary metrics — like overall system health, total alerts
+   created, and the GNN detective's current accuracy percentage.
+2. LIVE ALERTS WORKSPACE: Shows a real-time list of alerts streaming in via WebSockets.
+   It categorizes them by color-coded severity (Critical, High, Medium, Low) and lets
+   officers inspect the transaction details and mark them as reviewed.
+3. INFERENCE WATCHLIST: Displays a list of accounts that the GNN model flagged as having
+   high-probability suspicious transaction patterns.
+4. PIPELINE STATE MONITOR: Lets the team monitor active federated learning rounds. They can
+   see what training strategy is running, how much privacy budget is left, and the
+   node's current CPU/Battery levels.
+5. NETWORK UTILITIES: Exposes buttons to trigger demo runs, generate mock transactions,
+   and test the alerting configurations.
+================================================================================
+*/
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
@@ -83,6 +109,27 @@ function StatusPill({ label, healthy }) {
   );
 }
 
+function ActionButton({ href, label, background = COLORS.neutral }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: 'inline-block',
+        padding: '10px 14px',
+        borderRadius: 8,
+        background,
+        color: '#fff',
+        textDecoration: 'none',
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
 function StatCard({ title, value, subtitle }) {
   return (
     <div
@@ -132,6 +179,71 @@ function SectionCard({ title, subtitle, children, action }) {
   );
 }
 
+function AccessPanel({ accent, eyebrow, title, description, href, actionLabel, status, statusCaption, children }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 16,
+        padding: 18,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 16,
+        background: `linear-gradient(180deg, ${accent}14 0%, ${COLORS.card} 38%)`,
+        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+      }}
+    >
+      <div>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: accent,
+            }}
+          >
+            {eyebrow}
+          </div>
+          {status ? (
+            <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+              {status}
+              {statusCaption ? (
+                <div style={{ fontSize: 11, color: COLORS.subtext, fontWeight: 600 }}>{statusCaption}</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, color: COLORS.text }}>{title}</div>
+        <p style={{ margin: '8px 0 0', color: COLORS.subtext, lineHeight: 1.5 }}>{description}</p>
+      </div>
+      {children}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          paddingTop: 14,
+          borderTop: `1px solid ${COLORS.border}`,
+        }}
+      >
+        <div style={{ fontSize: 12, color: COLORS.subtext }}>Opens in a separate tab for deeper inspection.</div>
+        <ActionButton href={href} label={actionLabel} background={accent} />
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ text }) {
   return (
     <div
@@ -165,20 +277,32 @@ function App() {
     () => process.env.REACT_APP_MODEL_REGISTRY_URL || 'http://localhost:8004',
     []
   );
+  const policyManagerDirectUrl = useMemo(
+    () => process.env.REACT_APP_POLICY_MANAGER_URL || 'http://localhost:8003',
+    []
+  );
   const kafkaUiDirectUrl = useMemo(() => process.env.REACT_APP_KAFKA_UI_URL || 'http://localhost:18080', []);
+  const redisInsightDirectUrl = useMemo(
+    () => process.env.REACT_APP_REDIS_INSIGHT_URL || 'http://localhost:5540',
+    []
+  );
   const wsDirectOrigin = useMemo(() => {
     const override = process.env.REACT_APP_ALERTING_WS_URL;
     return override || alertingDirectUrl.replace(/^http/, 'ws');
   }, [alertingDirectUrl]);
 
+  const dashboardUiUrl = useMemo(() => window.location.origin, []);
   const wsProxyOrigin = useMemo(() => window.location.origin.replace(/^http/, 'ws'), []);
   const [useProxy, setUseProxy] = useState(null);
+  const shouldUseProxy = useMemo(() => useProxy !== false, [useProxy]);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`${proxyApiBase}/local-agent/health`)
       .then((response) => {
-        if (!cancelled) setUseProxy(Boolean(response.ok));
+        const contentType = response.headers.get('content-type') || '';
+        const hasJsonHealthResponse = response.ok && contentType.includes('application/json');
+        if (!cancelled) setUseProxy(hasJsonHealthResponse);
       })
       .catch(() => {
         if (!cancelled) setUseProxy(false);
@@ -188,32 +312,41 @@ function App() {
     };
   }, [proxyApiBase]);
 
-  const kafkaUiUrl = useMemo(() => (useProxy === false ? kafkaUiDirectUrl : '/kafka-ui/'), [kafkaUiDirectUrl, useProxy]);
-  const wsOrigin = useMemo(() => (useProxy === false ? wsDirectOrigin : wsProxyOrigin), [useProxy, wsDirectOrigin, wsProxyOrigin]);
+  const kafkaUiUrl = useMemo(() => (shouldUseProxy ? '/kafka-ui/' : kafkaUiDirectUrl), [kafkaUiDirectUrl, shouldUseProxy]);
+  const redisInsightUrl = useMemo(
+    () => (shouldUseProxy ? '/redis-insight/' : redisInsightDirectUrl),
+    [redisInsightDirectUrl, shouldUseProxy]
+  );
+  const wsOrigin = useMemo(() => (shouldUseProxy ? wsProxyOrigin : wsDirectOrigin), [shouldUseProxy, wsDirectOrigin, wsProxyOrigin]);
 
   const serviceDefinitions = useMemo(
     () => [
       {
         name: 'local-agent',
         label: 'Local Agent',
-        url: useProxy === false ? localAgentDirectUrl : `${proxyApiBase}/local-agent`,
+        url: shouldUseProxy ? `${proxyApiBase}/local-agent` : localAgentDirectUrl,
       },
-      { name: 'local-gnn', label: 'Local GNN', url: useProxy === false ? localGnnDirectUrl : `${proxyApiBase}/local-gnn` },
+      { name: 'local-gnn', label: 'Local GNN', url: shouldUseProxy ? `${proxyApiBase}/local-gnn` : localGnnDirectUrl },
       {
         name: 'privacy-layer',
         label: 'Privacy Layer',
-        url: useProxy === false ? privacyLayerDirectUrl : `${proxyApiBase}/privacy-layer`,
+        url: shouldUseProxy ? `${proxyApiBase}/privacy-layer` : privacyLayerDirectUrl,
       },
       {
         name: 'transaction-graph',
         label: 'Transaction Graph',
-        url: useProxy === false ? transactionGraphDirectUrl : `${proxyApiBase}/transaction-graph`,
+        url: shouldUseProxy ? `${proxyApiBase}/transaction-graph` : transactionGraphDirectUrl,
       },
-      { name: 'alerting', label: 'Alerting', url: useProxy === false ? alertingDirectUrl : `${proxyApiBase}/alerting` },
+      { name: 'alerting', label: 'Alerting', url: shouldUseProxy ? `${proxyApiBase}/alerting` : alertingDirectUrl },
       {
         name: 'model-registry',
         label: 'Model Registry',
-        url: useProxy === false ? modelRegistryDirectUrl : `${proxyApiBase}/model-registry`,
+        url: shouldUseProxy ? `${proxyApiBase}/model-registry` : modelRegistryDirectUrl,
+      },
+      {
+        name: 'policy-manager',
+        label: 'Policy Manager',
+        url: shouldUseProxy ? `${proxyApiBase}/policy-manager` : policyManagerDirectUrl,
       },
     ],
     [
@@ -221,32 +354,75 @@ function App() {
       localAgentDirectUrl,
       localGnnDirectUrl,
       modelRegistryDirectUrl,
+      policyManagerDirectUrl,
       privacyLayerDirectUrl,
       proxyApiBase,
       transactionGraphDirectUrl,
-      useProxy,
+      shouldUseProxy,
     ]
   );
 
   const [agentStatus, setAgentStatus] = useState(null);
   const [inferenceSnapshot, setInferenceSnapshot] = useState({ prediction_count: 0, predictions: [] });
   const [alerts, setAlerts] = useState([]);
+  const [alertSummary, setAlertSummary] = useState({
+    alert_count: 0,
+    severity_counts: {},
+    source_counts: {},
+    detector_enabled: false,
+    transaction_topic: 'transactions.events',
+    alerts_topic: 'fraud.alerts',
+    recent_detector_alerts: 0,
+    persistence_mode: 'unknown',
+    outbound_channels: [],
+  });
   const [accountsSnapshot, setAccountsSnapshot] = useState({ count: null, accounts: [] });
   const [modelVersions, setModelVersions] = useState([]);
+  const [governanceSnapshot, setGovernanceSnapshot] = useState({
+    globalPolicies: null,
+    privacyBudget: null,
+    governanceAgent: null,
+    auditEvents: [],
+  });
   const [serviceHealth, setServiceHealth] = useState({});
+  const [operatorShortcutHealth, setOperatorShortcutHealth] = useState({
+    kafka: false,
+    redis: false,
+  });
   const [fetchState, setFetchState] = useState({
     alertsLoaded: false,
     inferenceLoaded: false,
     statusLoaded: false,
     graphLoaded: false,
     modelRegistryLoaded: false,
+    governanceLoaded: false,
     websocketConnected: false,
   });
 
   useEffect(() => {
+    if (useProxy === null) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     async function fetchDashboardData() {
+      const fetchJsonIfOk = async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        return response.json();
+      };
+      const checkShortcutAvailability = async (url) => {
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            mode: shouldUseProxy ? 'same-origin' : 'no-cors',
+          });
+          return response.type === 'opaque' || response.ok;
+        } catch (error) {
+          return false;
+        }
+      };
       const serviceChecks = serviceDefinitions.map(async (service) => {
         try {
           const response = await fetch(`${service.url}/health`);
@@ -256,13 +432,15 @@ function App() {
           return [service.name, false];
         }
       });
+      let resolvedAgentId = null;
 
       try {
         const statusResponse = await fetch(
-          useProxy === false ? `${localAgentDirectUrl}/agent/status` : `${proxyApiBase}/local-agent/agent/status`
+          shouldUseProxy ? `${proxyApiBase}/local-agent/agent/status` : `${localAgentDirectUrl}/agent/status`
         );
         if (statusResponse.ok) {
           const payload = await statusResponse.json();
+          resolvedAgentId = payload?.agent_id || null;
           if (!cancelled) {
             setAgentStatus(payload);
             setFetchState((prev) => ({ ...prev, statusLoaded: true }));
@@ -276,9 +454,9 @@ function App() {
 
       try {
         const inferenceResponse = await fetch(
-          useProxy === false
-            ? `${localAgentDirectUrl}/agent/inference?limit=5`
-            : `${proxyApiBase}/local-agent/agent/inference?limit=5`
+          shouldUseProxy
+            ? `${proxyApiBase}/local-agent/agent/inference?limit=5`
+            : `${localAgentDirectUrl}/agent/inference?limit=5`
         );
         if (inferenceResponse.ok) {
           const payload = await inferenceResponse.json();
@@ -298,8 +476,32 @@ function App() {
       }
 
       try {
+        const alertSummaryResponse = await fetch(
+          shouldUseProxy ? `${proxyApiBase}/alerting/alerts/summary?limit=200` : `${alertingDirectUrl}/alerts/summary?limit=200`
+        );
+        if (alertSummaryResponse.ok) {
+          const payload = await alertSummaryResponse.json();
+          if (!cancelled) {
+            setAlertSummary({
+              alert_count: payload?.alert_count ?? 0,
+              severity_counts: payload?.severity_counts || {},
+              source_counts: payload?.source_counts || {},
+              detector_enabled: Boolean(payload?.detector_enabled),
+              transaction_topic: payload?.transaction_topic || 'transactions.events',
+              alerts_topic: payload?.alerts_topic || 'fraud.alerts',
+              recent_detector_alerts: payload?.recent_detector_alerts ?? 0,
+              persistence_mode: payload?.persistence_mode || 'unknown',
+              outbound_channels: Array.isArray(payload?.outbound_channels) ? payload.outbound_channels : [],
+            });
+          }
+        }
+      } catch (error) {
+        // Keep prior summary when the endpoint is unavailable.
+      }
+
+      try {
         const alertsResponse = await fetch(
-          useProxy === false ? `${alertingDirectUrl}/alerts/recent?limit=50` : `${proxyApiBase}/alerting/alerts/recent?limit=50`
+          shouldUseProxy ? `${proxyApiBase}/alerting/alerts/recent?limit=50` : `${alertingDirectUrl}/alerts/recent?limit=50`
         );
         if (alertsResponse.ok) {
           const payload = await alertsResponse.json();
@@ -316,9 +518,9 @@ function App() {
 
       try {
         const accountsResponse = await fetch(
-          useProxy === false
-            ? `${transactionGraphDirectUrl}/accounts?limit=200`
-            : `${proxyApiBase}/transaction-graph/accounts?limit=200`
+          shouldUseProxy
+            ? `${proxyApiBase}/transaction-graph/accounts?limit=200`
+            : `${transactionGraphDirectUrl}/accounts?limit=200`
         );
         if (accountsResponse.ok) {
           const payload = await accountsResponse.json();
@@ -338,9 +540,9 @@ function App() {
 
       try {
         const modelRegistryResponse = await fetch(
-          useProxy === false
-            ? `${modelRegistryDirectUrl}/models/versions`
-            : `${proxyApiBase}/model-registry/models/versions`
+          shouldUseProxy
+            ? `${proxyApiBase}/model-registry/models/versions`
+            : `${modelRegistryDirectUrl}/models/versions`
         );
         if (modelRegistryResponse.ok) {
           const payload = await modelRegistryResponse.json();
@@ -355,9 +557,41 @@ function App() {
         }
       }
 
+      try {
+        const governanceBaseUrl = shouldUseProxy ? `${proxyApiBase}/policy-manager` : policyManagerDirectUrl;
+        const encodedAgentId = resolvedAgentId ? encodeURIComponent(resolvedAgentId) : null;
+        const [globalPoliciesPayload, privacyBudgetPayload, governanceAgentPayload, governanceAuditPayload] = await Promise.all([
+          fetchJsonIfOk(`${governanceBaseUrl}/policies/global`),
+          encodedAgentId ? fetchJsonIfOk(`${governanceBaseUrl}/policies/budget/${encodedAgentId}`) : Promise.resolve(null),
+          encodedAgentId ? fetchJsonIfOk(`${governanceBaseUrl}/governance/agent/${encodedAgentId}`) : Promise.resolve(null),
+          fetchJsonIfOk(`${governanceBaseUrl}/governance/audit?limit=6`),
+        ]);
+        if (!cancelled) {
+          setGovernanceSnapshot({
+            globalPolicies: globalPoliciesPayload,
+            privacyBudget: privacyBudgetPayload,
+            governanceAgent: governanceAgentPayload,
+            auditEvents: Array.isArray(governanceAuditPayload) ? governanceAuditPayload : [],
+          });
+          setFetchState((prev) => ({ ...prev, governanceLoaded: true }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFetchState((prev) => ({ ...prev, governanceLoaded: true }));
+        }
+      }
+
       const healthChecks = await Promise.all(serviceChecks);
+      const [kafkaShortcutHealthy, redisShortcutHealthy] = await Promise.all([
+        checkShortcutAvailability(kafkaUiUrl),
+        checkShortcutAvailability(redisInsightUrl),
+      ]);
       if (!cancelled) {
         setServiceHealth(Object.fromEntries(healthChecks));
+        setOperatorShortcutHealth({
+          kafka: kafkaShortcutHealthy,
+          redis: redisShortcutHealthy,
+        });
       }
     }
 
@@ -367,9 +601,13 @@ function App() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [alertingDirectUrl, localAgentDirectUrl, modelRegistryDirectUrl, proxyApiBase, serviceDefinitions, transactionGraphDirectUrl, useProxy]);
+  }, [alertingDirectUrl, kafkaUiUrl, localAgentDirectUrl, modelRegistryDirectUrl, policyManagerDirectUrl, proxyApiBase, redisInsightUrl, serviceDefinitions, shouldUseProxy, transactionGraphDirectUrl, useProxy]);
 
   useEffect(() => {
+    if (useProxy === null) {
+      return undefined;
+    }
+
     let ws;
     try {
       ws = new WebSocket(`${wsOrigin}/ws/alerts`);
@@ -406,9 +644,13 @@ function App() {
     return () => {
       if (ws) ws.close();
     };
-  }, [wsOrigin]);
+  }, [useProxy, wsOrigin]);
 
   const analytics = useMemo(() => {
+    const sourceCounts = Object.entries(alertSummary.source_counts || {})
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+
     const severityCounts = SEVERITY_ORDER.map((severity) => ({
       name: severity.charAt(0).toUpperCase() + severity.slice(1),
       value: alerts.filter((alert) => String(alert.severity || '').toLowerCase() === severity).length,
@@ -460,6 +702,7 @@ function App() {
 
     return {
       severityCounts,
+      sourceCounts,
       alertsByTransaction,
       alertTimeline,
       avgConfidence,
@@ -468,12 +711,43 @@ function App() {
       topActiveAccounts,
       topInferenceConfidence,
     };
-  }, [accountsSnapshot.accounts, alerts, inferenceSnapshot.predictions]);
+  }, [accountsSnapshot.accounts, alertSummary.source_counts, alerts, inferenceSnapshot.predictions]);
 
-  const modelAccuracy = agentStatus?.last_metrics?.accuracy;
-  const modelLoss = agentStatus?.last_metrics?.loss;
+  const activeModelVersionId = agentStatus?.last_model_version || modelVersions[0]?.version_id || null;
+  const activeRegistryModel = modelVersions.find((version) => version.version_id === activeModelVersionId) || null;
+  const latestRegistryModel = modelVersions[0] || null;
+  const latestRegistryModelWithMetrics = modelVersions.find(
+    (version) => version?.metrics && Object.keys(version.metrics).length > 0
+  ) || null;
+  const activeRegistryMetrics =
+    activeRegistryModel?.metrics && Object.keys(activeRegistryModel.metrics).length > 0 ? activeRegistryModel.metrics : null;
+  const latestRegistryMetrics =
+    latestRegistryModel?.metrics && Object.keys(latestRegistryModel.metrics).length > 0 ? latestRegistryModel.metrics : null;
+  const fallbackRegistryMetrics =
+    latestRegistryModelWithMetrics?.metrics && Object.keys(latestRegistryModelWithMetrics.metrics).length > 0
+      ? latestRegistryModelWithMetrics.metrics
+      : null;
+  const runtimeMetrics =
+    agentStatus?.last_metrics && Object.keys(agentStatus.last_metrics).length > 0 ? agentStatus.last_metrics : null;
+  const effectiveModelMetrics = runtimeMetrics || activeRegistryMetrics || latestRegistryMetrics || fallbackRegistryMetrics || null;
+  const modelAccuracy = effectiveModelMetrics?.accuracy;
+  const modelLoss = effectiveModelMetrics?.loss;
   const totalTransactions = accountsSnapshot.count;
   const allCoreServicesHealthy = serviceDefinitions.every((service) => serviceHealth[service.name]);
+  const globalPolicies = governanceSnapshot.globalPolicies;
+  const privacyBudget = governanceSnapshot.privacyBudget;
+  const governanceAgent = governanceSnapshot.governanceAgent;
+  const governanceAuditEvents = governanceSnapshot.auditEvents;
+  const policyVersion = globalPolicies?.policy_version;
+  const aggregationStrategy = globalPolicies?.aggregation_strategy;
+  const privacyBudgetUsage =
+    privacyBudget && typeof privacyBudget.total_spent_epsilon === 'number' && typeof privacyBudget.epsilon === 'number'
+      ? `${privacyBudget.total_spent_epsilon.toFixed(2)} / ${privacyBudget.epsilon.toFixed(2)}`
+      : 'N/A';
+  const privacyDeltaUsage =
+    privacyBudget && typeof privacyBudget.total_spent_delta === 'number' && typeof privacyBudget.delta === 'number'
+      ? `${privacyBudget.total_spent_delta.toExponential(2)} / ${privacyBudget.delta.toExponential(2)}`
+      : 'N/A';
 
   return (
     <div
@@ -511,7 +785,7 @@ function App() {
           <StatCard
             title="Fraud Alerts"
             value={alerts.length}
-            subtitle={`${analytics.criticalOrHigh} high/critical alerts in memory`}
+            subtitle={`${analytics.criticalOrHigh} high/critical alerts, ${alertSummary.recent_detector_alerts || 0} detected from transaction stream`}
           />
           <StatCard
             title="Model Accuracy"
@@ -526,7 +800,7 @@ function App() {
           <StatCard
             title="Avg Alert Confidence"
             value={typeof analytics.avgConfidence === 'number' ? `${(analytics.avgConfidence * 100).toFixed(1)}%` : 'N/A'}
-            subtitle="Calculated from recent alert payloads"
+            subtitle={`History source: ${alertSummary.persistence_mode || 'unknown'}`}
           />
           <StatCard
             title="High-Risk Predictions"
@@ -560,6 +834,8 @@ function App() {
                   <div><strong>Update Age:</strong> {formatRelativeTime(agentStatus?.last_update_at)}</div>
                   <div><strong>Last Inference:</strong> {formatTimestamp(agentStatus?.last_inference_at)}</div>
                   <div><strong>Data Feeds:</strong> {fetchState.statusLoaded && fetchState.alertsLoaded && fetchState.graphLoaded && fetchState.inferenceLoaded ? 'Loaded' : 'Refreshing...'}</div>
+                  <div><strong>Alert Detector:</strong> {alertSummary.detector_enabled ? 'Transaction Stream Active' : 'Unavailable'}</div>
+                  <div><strong>Alert Sources:</strong> {analytics.sourceCounts.length > 0 ? analytics.sourceCounts.map((item) => `${item.source} (${item.count})`).join(', ') : 'N/A'}</div>
                 </div>
               </div>
               <div>
@@ -591,33 +867,68 @@ function App() {
 
           <SectionCard
             title="Operator Shortcuts"
-            subtitle="Direct access to supporting runtime tools."
-            action={
-              <a
-                href={kafkaUiUrl}
-                target="_blank"
-                rel="noreferrer"
+            subtitle="Separated access zones for streaming observability and workflow-state inspection."
+          >
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div
                 style={{
-                  display: 'inline-block',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  background: COLORS.neutral,
-                  color: '#fff',
-                  textDecoration: 'none',
-                  fontWeight: 700,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                  gap: 16,
                 }}
               >
-                Open Kafka UI
-              </a>
-            }
-          >
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div><strong>Kafka Cluster:</strong> federated-fraud-kafka</div>
-              <div><strong>Broker:</strong> kafka:9092 (id: 1)</div>
-              <div><strong>Topics:</strong> transactions.events, fraud.alerts, __consumer_offsets</div>
+                <AccessPanel
+                  accent={COLORS.neutral}
+                  eyebrow="Streaming Observability"
+                  title="Kafka UI"
+                  description="Inspect brokers, topics, and the live fraud-event pipeline in a dedicated workspace."
+                  href={kafkaUiUrl}
+                  actionLabel="Open Kafka UI"
+                  status={<StatusPill label={operatorShortcutHealth.kafka ? 'Healthy' : 'Unavailable'} healthy={operatorShortcutHealth.kafka} />}
+                  statusCaption="Kafka Service"
+                >
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div><strong>Cluster:</strong> federated-fraud-kafka</div>
+                    <div><strong>Broker:</strong> kafka:9092 (id: 1)</div>
+                    <div><strong>Pipeline:</strong> {`${alertSummary.transaction_topic || 'transactions.events'} -> alerting -> ${alertSummary.alerts_topic || 'fraud.alerts'}`}</div>
+                  </div>
+                </AccessPanel>
+                <AccessPanel
+                  accent="#7c3aed"
+                  eyebrow="Workflow State"
+                  title="Redis Insight"
+                  description="Inspect orchestration state, stored keys, and runtime coordination data without mixing it with Kafka tooling."
+                  href={redisInsightUrl}
+                  actionLabel="Open Redis Insight"
+                  status={<StatusPill label={operatorShortcutHealth.redis ? 'Healthy' : 'Unavailable'} healthy={operatorShortcutHealth.redis} />}
+                  statusCaption="Redis Service"
+                >
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div><strong>Store:</strong> redis:6379</div>
+                    <div><strong>Purpose:</strong> workflow state for `agentic-coordinator`</div>
+                    <div><strong>Access URL:</strong> {redisInsightUrl}</div>
+                  </div>
+                </AccessPanel>
+              </div>
+              <div><strong>CBDC Fraud Detection Dashboard:</strong> {dashboardUiUrl}</div>
+              <div><strong>Notification Channels:</strong> {alertSummary.outbound_channels.filter((item) => item.configured).map((item) => item.channel).join(', ') || 'None configured'}</div>
               <div><strong>Transaction Graph API:</strong> {serviceDefinitions.find((item) => item.name === 'transaction-graph')?.url}</div>
               <div><strong>Alerting API:</strong> {serviceDefinitions.find((item) => item.name === 'alerting')?.url}</div>
               <div><strong>Alerting WebSocket:</strong> {`${wsOrigin}/ws/alerts`}</div>
+              <div style={{ display: 'grid', gap: 8, padding: 12, border: `1px solid ${COLORS.border}`, borderRadius: 10, background: '#f9fafb' }}>
+                <div style={{ fontWeight: 700 }}>Core Service Access Index</div>
+                <div>{[
+                  `Dashboard ${dashboardUiUrl}`,
+                  `Kafka UI ${kafkaUiUrl}`,
+                  `Model Registry ${serviceDefinitions.find((item) => item.name === 'model-registry')?.url}`,
+                  `Policy Manager ${serviceDefinitions.find((item) => item.name === 'policy-manager')?.url}`,
+                  `Local Agent ${serviceDefinitions.find((item) => item.name === 'local-agent')?.url}`,
+                  `Local GNN ${serviceDefinitions.find((item) => item.name === 'local-gnn')?.url}`,
+                  `Privacy Layer ${serviceDefinitions.find((item) => item.name === 'privacy-layer')?.url}`,
+                  `Transaction Graph ${serviceDefinitions.find((item) => item.name === 'transaction-graph')?.url}`,
+                  `Alerting ${serviceDefinitions.find((item) => item.name === 'alerting')?.url}`,
+                ].join(' | ')}</div>
+              </div>
             </div>
           </SectionCard>
         </div>
@@ -662,6 +973,24 @@ function App() {
                     <YAxis allowDecimals={false} />
                     <Tooltip />
                     <Bar dataKey="count" fill={COLORS.neutral} radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Alert Sources" subtitle="Distribution of recent alerts by producing detector or upstream source.">
+            {analytics.sourceCounts.length === 0 ? (
+              <EmptyState text="No alert-source distribution available yet." />
+            ) : (
+              <div style={{ height: 260 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.sourceCounts}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="source" hide />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill={COLORS.high} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -805,133 +1134,236 @@ function App() {
         >
           <SectionCard
             title="Model Registry & Governance"
-            subtitle="Tracks all versions of the GNN fraud-detection model, highlighting the version currently running under the local-agent."
+            subtitle="Combines backend model-registry history with live governance policy, privacy budget, and audit data from policy-manager."
           >
-            {modelVersions.length === 0 ? (
-              <EmptyState text="No model versions registered yet." />
-            ) : (
-              <div style={{ overflowX: 'auto', maxHeight: '320px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f3f4f6' }}>
-                      {['Status', 'Version ID', 'Created At', 'Type', 'Metrics'].map((heading) => (
-                        <th
-                          key={heading}
-                          style={{
-                            textAlign: 'left',
-                            padding: '10px 12px',
-                            borderBottom: `1px solid ${COLORS.border}`,
-                            color: COLORS.subtext,
-                            fontSize: 13,
-                          }}
-                        >
-                          {heading}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {modelVersions.map((mv) => {
-                      const isActive = agentStatus?.last_model_version && mv.version_id === agentStatus.last_model_version;
-                      return (
-                        <tr key={mv.version_id} style={{ background: isActive ? '#f0fdf4' : 'transparent' }}>
-                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
-                            {isActive ? (
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  borderRadius: 999,
-                                  padding: '2px 8px',
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  color: '#15803d',
-                                  background: '#dcfce7',
-                                }}
-                              >
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
-                                Active
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  borderRadius: 999,
-                                  padding: '2px 8px',
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  color: COLORS.subtext,
-                                  background: '#f3f4f6',
-                                }}
-                              >
-                                Registered
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontFamily: 'monospace', fontWeight: isActive ? 700 : 'normal' }}>
-                            {mv.version_id}
-                          </td>
-                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
-                            {formatTimestamp(mv.created_at)}
-                          </td>
-                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
-                            <span
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {[
+                  {
+                    label: 'Policy Version',
+                    value: typeof policyVersion === 'number' ? `v${policyVersion}` : 'N/A',
+                    detail: `Updated ${formatRelativeTime(globalPolicies?.updated_at)}`,
+                  },
+                  {
+                    label: 'Aggregation Strategy',
+                    value: aggregationStrategy || 'N/A',
+                    detail: globalPolicies?.fallback_aggregation_strategy
+                      ? `Fallback ${globalPolicies.fallback_aggregation_strategy}`
+                      : 'Awaiting policy payload',
+                  },
+                  {
+                    label: 'Privacy Budget',
+                    value: privacyBudgetUsage,
+                    detail: `Delta ${privacyDeltaUsage}`,
+                  },
+                  {
+                    label: 'Governed Agent',
+                    value: governanceAgent?.active ? 'Active' : governanceAgent ? 'Inactive' : 'N/A',
+                    detail:
+                      typeof governanceAgent?.minimum_reliability_score === 'number'
+                        ? `Min reliability ${governanceAgent.minimum_reliability_score.toFixed(2)}`
+                        : 'Awaiting governance agent profile',
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: 12,
+                      padding: '14px 16px',
+                      background: '#f9fafb',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.subtext }}>{item.label}</div>
+                    <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800, color: COLORS.text }}>{item.value}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: COLORS.subtext }}>{item.detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 16,
+                }}
+              >
+                <div style={{ overflowX: 'auto', maxHeight: '320px' }}>
+                  {modelVersions.length === 0 ? (
+                    <EmptyState text="No model versions registered yet." />
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f3f4f6' }}>
+                          {['Status', 'Version ID', 'Created At', 'Type', 'Metrics'].map((heading) => (
+                            <th
+                              key={heading}
                               style={{
-                                display: 'inline-block',
-                                borderRadius: 999,
-                                padding: '2px 6px',
-                                fontSize: 11,
-                                background: mv.is_global ? '#e0f2fe' : '#fef3c7',
-                                color: mv.is_global ? '#0369a1' : '#b45309',
-                                fontWeight: 600,
+                                textAlign: 'left',
+                                padding: '10px 12px',
+                                borderBottom: `1px solid ${COLORS.border}`,
+                                color: COLORS.subtext,
+                                fontSize: 13,
                               }}
                             >
-                              {mv.is_global ? 'Global' : 'Local'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 12, fontFamily: 'monospace' }}>
-                            {mv.metrics && Object.keys(mv.metrics).length > 0 ? (
-                              Object.entries(mv.metrics).map(([name, val]) => (
-                                <div key={name}>
-                                  <strong>{name}:</strong> {typeof val === 'number' ? val.toFixed(4) : String(val)}
-                                </div>
-                              ))
-                            ) : (
-                              <span style={{ color: COLORS.subtext }}>No metrics</span>
-                            )}
-                          </td>
+                              {heading}
+                            </th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {modelVersions.map((mv) => {
+                          const isActive = activeModelVersionId && mv.version_id === activeModelVersionId;
+                          return (
+                            <tr key={mv.version_id} style={{ background: isActive ? '#f0fdf4' : 'transparent' }}>
+                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
+                                {isActive ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      borderRadius: 999,
+                                      padding: '2px 8px',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: '#15803d',
+                                      background: '#dcfce7',
+                                    }}
+                                  >
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      borderRadius: 999,
+                                      padding: '2px 8px',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: COLORS.subtext,
+                                      background: '#f3f4f6',
+                                    }}
+                                  >
+                                    Registered
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontFamily: 'monospace', fontWeight: isActive ? 700 : 'normal' }}>
+                                {mv.version_id}
+                              </td>
+                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                                {formatTimestamp(mv.created_at)}
+                              </td>
+                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    borderRadius: 999,
+                                    padding: '2px 6px',
+                                    fontSize: 11,
+                                    background: mv.is_global ? '#e0f2fe' : '#fef3c7',
+                                    color: mv.is_global ? '#0369a1' : '#b45309',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {mv.is_global ? 'Global' : 'Local'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 12, fontFamily: 'monospace' }}>
+                                {mv.metrics && Object.keys(mv.metrics).length > 0 ? (
+                                  Object.entries(mv.metrics).map(([name, val]) => (
+                                    <div key={name}>
+                                      <strong>{name}:</strong> {typeof val === 'number' ? val.toFixed(4) : String(val)}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <span style={{ color: COLORS.subtext }}>No metrics</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </SectionCard>
 
           <SectionCard
             title="Model Performance Trends"
             subtitle="Comparing Accuracy and Loss metrics over registered versions."
           >
-            <div style={{ height: 260 }}>
-              {modelVersions.length === 0 ? (
-                <EmptyState text="Awaiting model registry versions data." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={[...modelVersions].reverse()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
-                    <YAxis domain={[0, 1]} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
-                    <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div style={{ height: 260 }}>
+                {modelVersions.length === 0 ? (
+                  <EmptyState text="Awaiting model registry versions data." />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={[...modelVersions].reverse()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
+                      <YAxis domain={[0, 1]} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
+                      <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  background: '#f9fafb',
+                  minHeight: 320,
+                }}
+              >
+                <div style={{ fontWeight: 700, color: COLORS.text }}>Governance Audit Trail</div>
+                {governanceAuditEvents.length === 0 ? (
+                  <div style={{ color: COLORS.subtext, fontSize: 13 }}>
+                    {fetchState.governanceLoaded ? 'No governance audit events available.' : 'Loading governance audit events...'}
+                  </div>
+                ) : (
+                  governanceAuditEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      style={{
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                        background: COLORS.card,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                        <strong style={{ fontSize: 13 }}>{event.event_type}</strong>
+                        <span style={{ fontSize: 12, color: COLORS.subtext }}>{formatTimestamp(event.created_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: COLORS.subtext }}>
+                        <strong>Agent:</strong> {event.agent_id || 'system'}
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 12, color: COLORS.subtext, fontFamily: 'monospace' }}>
+                        {JSON.stringify(event.details || {})}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </SectionCard>
         </div>

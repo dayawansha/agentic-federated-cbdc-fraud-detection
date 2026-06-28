@@ -9,3 +9,4 @@ bank-node/fraud-dashboard/build/
 train-data/EllipticPlusPlus-main/
 train-data/processed/
 /.vscode/
+/bank-node/fraud-dashboard/package-lock.json

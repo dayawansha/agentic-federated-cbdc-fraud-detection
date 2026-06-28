@@ -46,6 +46,7 @@ except ModuleNotFoundError:
     sys.modules["langgraph.graph"] = graph_module
 
 import main
+from shared.schemas.models import WeightNegotiationItem
 
 
 class FakeResponse:
@@ -72,11 +73,12 @@ class FakeGetResponse(FakeResponse):
 
 
 class FakeAsyncClient:
-    def __init__(self, response=None, error=None, get_response=None, get_error=None):
+    def __init__(self, response=None, error=None, get_response=None, get_error=None, get_responses=None):
         self.response = response
         self.error = error
         self.get_response = get_response
         self.get_error = get_error
+        self.get_responses = get_responses or {}
         self.calls = []
 
     async def __aenter__(self):
@@ -95,6 +97,11 @@ class FakeAsyncClient:
         self.calls.append({"method": "GET", "url": url, "timeout": timeout})
         if self.get_error is not None:
             raise self.get_error
+        if url in self.get_responses:
+            response = self.get_responses[url]
+            if isinstance(response, Exception):
+                raise response
+            return response
         return self.get_response
 
 
@@ -109,6 +116,8 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
                 "last_model_version": None,
                 "last_inference_at": None,
                 "last_inference_summary": {},
+                "last_adaptive_plan": {},
+                "last_reasoning_trace": [],
             }
         )
 
@@ -139,7 +148,7 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["global_model_loaded"])
         self.assertEqual(result["global_weights"], b"global-model")
         self.assertEqual(result["model_version_id"], "v-1")
-        self.assertEqual(result["current_step"], "training_triggered")
+        self.assertEqual(result["current_step"], "planning")
 
     async def test_fetch_inference_predictions_updates_status_summary(self):
         payload = {
@@ -179,6 +188,33 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(main.agent_status["last_inference_summary"]["high_risk_count"], 1)
         self.assertEqual(main.agent_status["last_inference_summary"]["top_tx_id"], 101)
 
+    async def test_fetch_inference_predictions_normalizes_null_numeric_fields(self):
+        payload = {
+            "predictions": [
+                {
+                    "tx_id": 301,
+                    "predicted_class": "unknown",
+                    "predicted_label": 2,
+                    "confidence": None,
+                    "illicit_probability": None,
+                    "licit_probability": None,
+                    "unknown_probability": None,
+                    "known_label": None,
+                }
+            ]
+        }
+        client = FakeAsyncClient(response=FakeResponse(payload))
+
+        with patch.object(main.httpx, "AsyncClient", return_value=client):
+            result = await main.fetch_inference_predictions(limit=5)
+
+        self.assertEqual(result.prediction_count, 1)
+        self.assertEqual(result.predictions[0].tx_id, 301)
+        self.assertEqual(result.predictions[0].confidence, 0.0)
+        self.assertEqual(result.predictions[0].illicit_probability, 0.0)
+        self.assertEqual(result.predictions[0].licit_probability, 0.0)
+        self.assertEqual(result.predictions[0].unknown_probability, 0.0)
+
     async def test_fetch_inference_predictions_raises_502_when_service_unreachable(self):
         client = FakeAsyncClient(error=RuntimeError("network down"))
 
@@ -201,14 +237,20 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
             "sample_size": 12,
             "model_version_id": "v-round-6",
             "metrics": {"loss": 0.11},
+            "adaptive_plan": {"local_epochs": 2, "noise_multiplier": 0.02},
+            "reasoning_trace": ["Recent model quality is weak, so the plan allocates extra local epochs."],
         }
 
         class FakeGraph:
             async def ainvoke(self, _state):
                 return final_state
 
+        client = FakeAsyncClient(
+            get_response=FakeGetResponse({"version_id": "v-round-6", "metrics": {"loss": 0.11}})
+        )
         with patch.object(main, "app_graph", FakeGraph()):
-            response = await main.start_local_round(round_id="round-7", agent_id="agent-1")
+            with patch.object(main.httpx, "AsyncClient", return_value=client):
+                response = await main.start_local_round(round_id="round-7", agent_id="agent-1")
 
         self.assertEqual(response["status"], "success")
         self.assertEqual(response["final_state"]["current_step"], "done")
@@ -218,7 +260,113 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(main.agent_status["last_round_id"], "round-7")
         self.assertEqual(main.agent_status["last_model_version"], "v-round-6")
         self.assertEqual(main.agent_status["last_metrics"], {"loss": 0.11})
+        self.assertEqual(main.agent_status["last_adaptive_plan"], {"local_epochs": 2, "noise_multiplier": 0.02})
+        self.assertEqual(len(main.agent_status["last_reasoning_trace"]), 1)
         self.assertIsNotNone(main.agent_status["last_update_at"])
+
+    async def test_plan_local_execution_adapts_to_sparse_labels_and_low_accuracy(self):
+        main.agent_status["last_metrics"] = {"accuracy": 0.45, "loss": 1.1, "labeled_ratio": 0.2, "sparse_label_mode": 1.0}
+        main.agent_status["last_inference_summary"] = {"high_risk_count": 3, "top_confidence": 0.97}
+        state = {
+            "agent_id": "agent-1",
+            "round_id": "round-plan",
+            "data_ready": True,
+            "global_model_loaded": True,
+            "training_complete": False,
+            "privacy_applied": False,
+            "raw_weights": b"",
+            "protected_weights": b"",
+            "masked_weights": b"",
+            "encrypted_weights": b"",
+            "encrypted_mask_share": "",
+            "protected_payload_sha256": "",
+            "encrypted_payload_sha256": "",
+            "sample_size": 0,
+            "metrics": {},
+            "global_weights": b"global-model",
+            "model_version_id": "v-2",
+            "noise_multiplier": 0.01,
+            "selected_strategy": "FedAvg",
+            "local_training_strategy": "FedAvg",
+            "fedprox_mu": 1.0,
+            "local_epochs": 1,
+            "pseudo_label_weight": 0.0,
+            "pseudo_label_confidence": 0.9,
+            "post_round_inference_limit": 5,
+            "run_post_round_inference": True,
+            "participation_checks": {
+                "privacy_budget": {"epsilon": 10.0, "remaining_epsilon": 1.5, "required_reserve_epsilon": 0.5},
+                "policy_constraints": {"min_noise_multiplier": 0.0, "max_noise_multiplier": 0.2},
+            },
+            "adaptive_plan": {},
+            "reasoning_trace": [],
+            "current_step": "planning",
+        }
+
+        result = await main.plan_local_execution(state)
+
+        self.assertEqual(result["current_step"], "training_triggered")
+        self.assertEqual(result["local_training_strategy"], "FedProxGNN")
+        self.assertGreaterEqual(result["local_epochs"], 2)
+        self.assertGreater(result["pseudo_label_weight"], 0.0)
+        self.assertTrue(result["run_post_round_inference"])
+        self.assertGreater(len(result["reasoning_trace"]), 0)
+
+    async def test_run_local_training_forwards_strategy_and_fedprox_mu(self):
+        client = FakeAsyncClient(
+            response=FakeResponse(
+                {
+                    "weights": base64.b64encode(b"trained").decode("ascii"),
+                    "sample_size": 9,
+                    "metrics": {"loss": 0.21, "fedprox_penalty": 0.03},
+                }
+            )
+        )
+        state = {
+            "agent_id": "agent-1",
+            "round_id": "round-fedprox",
+            "data_ready": True,
+            "global_model_loaded": True,
+            "training_complete": False,
+            "privacy_applied": False,
+            "raw_weights": b"",
+            "protected_weights": b"",
+            "masked_weights": b"",
+            "encrypted_weights": b"",
+            "encrypted_mask_share": "",
+            "protected_payload_sha256": "",
+            "encrypted_payload_sha256": "",
+            "sample_size": 0,
+            "metrics": {},
+            "global_weights": b"global-model",
+            "model_version_id": "v-1",
+            "noise_multiplier": 0.01,
+            "selected_strategy": "FedProxGNN",
+            "local_training_strategy": "FedProxGNN",
+            "fedprox_mu": 0.75,
+            "local_epochs": 3,
+            "pseudo_label_weight": 0.4,
+            "pseudo_label_confidence": 0.82,
+            "post_round_inference_limit": 8,
+            "run_post_round_inference": True,
+            "participation_checks": {},
+            "adaptive_plan": {"risk_pressure": 0.7, "budget_pressure": 0.2, "sparse_label_pressure": 0.5, "plan_confidence": 0.9},
+            "reasoning_trace": ["Sparse labels were detected, so the plan enables semi-supervised pseudo-label training."],
+            "current_step": "training_triggered",
+        }
+
+        with patch.object(main.httpx, "AsyncClient", return_value=client):
+            result = await main.run_local_training(state)
+
+        self.assertTrue(result["training_complete"])
+        self.assertEqual(result["sample_size"], 9)
+        self.assertEqual(result["metrics"]["fedprox_penalty"], 0.03)
+        self.assertEqual(client.calls[0]["json"]["strategy"], "FedProxGNN")
+        self.assertEqual(client.calls[0]["json"]["fedprox_mu"], 0.75)
+        self.assertEqual(client.calls[0]["json"]["epochs"], 3)
+        self.assertEqual(client.calls[0]["json"]["pseudo_label_weight"], 0.4)
+        self.assertEqual(client.calls[0]["json"]["pseudo_label_confidence"], 0.82)
+        self.assertEqual(base64.b64decode(client.calls[0]["json"]["global_weights"]), b"global-model")
 
     async def test_build_alerts_from_predictions_filters_for_high_confidence_illicit_results(self):
         predictions = [
@@ -265,13 +413,13 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         req = main.WeightNegotiationRequest(
             round_id="round-test",
             agents=[
-                main.WeightNegotiationItem(
+                WeightNegotiationItem(
                     agent_id="agent-a",
                     sample_size=10,
                     reliability_score=0.9,
                     metrics={"f1_score": 0.8}
                 ),
-                main.WeightNegotiationItem(
+                WeightNegotiationItem(
                     agent_id="agent-b",
                     sample_size=20,
                     reliability_score=1.0,
@@ -317,6 +465,138 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         vote = await main.evaluate_pattern(proposal)
         self.assertEqual(vote.vote, "REJECT")
         self.assertIn("out of bounds", vote.reason)
+
+
+class TestAgentSafeguards(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self._orig_enforce = main.ENFORCE_PRIVACY_BUDGET
+        self._orig_simulate = main.SIMULATE_LOW_RESOURCES
+        self._orig_cpu = main.SIMULATE_CPU_LOAD
+        self._orig_battery = main.SIMULATE_BATTERY_LEVEL
+        self._orig_projected_eps = main.PROJECTED_ROUND_EPSILON_SPEND
+        self._orig_projected_delta = main.PROJECTED_ROUND_DELTA_SPEND
+        self._orig_min_buffer = main.MIN_REMAINING_EPSILON_BUFFER
+        self._orig_min_ratio = main.MIN_REMAINING_EPSILON_RATIO
+        self._orig_require_pm = main.REQUIRE_POLICY_MANAGER_FOR_PARTICIPATION
+        self._orig_dp_noise = main.DP_NOISE_MULTIPLIER
+
+    async def asyncTearDown(self):
+        main.ENFORCE_PRIVACY_BUDGET = self._orig_enforce
+        main.SIMULATE_LOW_RESOURCES = self._orig_simulate
+        main.SIMULATE_CPU_LOAD = self._orig_cpu
+        main.SIMULATE_BATTERY_LEVEL = self._orig_battery
+        main.PROJECTED_ROUND_EPSILON_SPEND = self._orig_projected_eps
+        main.PROJECTED_ROUND_DELTA_SPEND = self._orig_projected_delta
+        main.MIN_REMAINING_EPSILON_BUFFER = self._orig_min_buffer
+        main.MIN_REMAINING_EPSILON_RATIO = self._orig_min_ratio
+        main.REQUIRE_POLICY_MANAGER_FOR_PARTICIPATION = self._orig_require_pm
+        main.DP_NOISE_MULTIPLIER = self._orig_dp_noise
+
+    async def test_start_round_restarts_when_safeguards_disabled(self):
+        class FakeGraph:
+            async def ainvoke(self, _state):
+                return {"current_step": "done"}
+        main.ENFORCE_PRIVACY_BUDGET = False
+        main.SIMULATE_LOW_RESOURCES = False
+        client = FakeAsyncClient(
+            get_response=FakeGetResponse({}, status_code=404)
+        )
+        with patch.object(main, "app_graph", FakeGraph()):
+            with patch.object(main.httpx, "AsyncClient", return_value=client):
+                resp = await main.start_local_round(round_id="r1", agent_id="agent-1")
+        self.assertEqual(resp["status"], "success")
+
+    async def test_start_round_rejected_due_to_privacy_budget(self):
+        main.ENFORCE_PRIVACY_BUDGET = True
+        main.SIMULATE_LOW_RESOURCES = False
+        
+        budget_payload = {
+            "epsilon": 10.0,
+            "delta": 1e-5,
+            "total_spent_epsilon": 10.0,
+            "total_spent_delta": 0.0
+        }
+        client = FakeAsyncClient(
+            get_responses={
+                f"{main.POLICY_MANAGER_URL}/policies/budget/agent-1": FakeGetResponse(budget_payload),
+                f"{main.POLICY_MANAGER_URL}/policies/global": FakeGetResponse({"min_noise_multiplier": 0.0, "max_noise_multiplier": 1.0}),
+            }
+        )
+        
+        with patch.object(main.httpx, "AsyncClient", return_value=client):
+            with self.assertRaises(main.HTTPException) as exc:
+                await main.start_local_round(round_id="r1", agent_id="agent-1")
+                
+        self.assertEqual(exc.exception.status_code, 403)
+        self.assertEqual(exc.exception.detail, "Participation rejected: Insufficient privacy budget for projected round cost")
+
+    async def test_start_round_rejected_when_privacy_reserve_buffer_would_be_breached(self):
+        main.ENFORCE_PRIVACY_BUDGET = True
+        main.SIMULATE_LOW_RESOURCES = False
+        main.PROJECTED_ROUND_EPSILON_SPEND = 0.1
+        main.MIN_REMAINING_EPSILON_BUFFER = 0.2
+
+        budget_payload = {
+            "epsilon": 1.0,
+            "delta": 1e-5,
+            "total_spent_epsilon": 0.75,
+            "total_spent_delta": 0.0,
+        }
+        client = FakeAsyncClient(
+            get_responses={
+                f"{main.POLICY_MANAGER_URL}/policies/budget/agent-1": FakeGetResponse(budget_payload),
+                f"{main.POLICY_MANAGER_URL}/policies/global": FakeGetResponse({"min_noise_multiplier": 0.0, "max_noise_multiplier": 1.0}),
+            }
+        )
+
+        with patch.object(main.httpx, "AsyncClient", return_value=client):
+            with self.assertRaises(main.HTTPException) as exc:
+                await main.start_local_round(round_id="r1", agent_id="agent-1")
+
+        self.assertEqual(exc.exception.status_code, 403)
+        self.assertEqual(exc.exception.detail, "Participation rejected: Privacy reserve would fall below policy buffer")
+
+    async def test_start_round_rejected_when_noise_multiplier_violates_global_policy(self):
+        main.ENFORCE_PRIVACY_BUDGET = True
+        main.SIMULATE_LOW_RESOURCES = False
+        main.DP_NOISE_MULTIPLIER = 0.5
+
+        budget_payload = {
+            "epsilon": 10.0,
+            "delta": 1e-5,
+            "total_spent_epsilon": 1.0,
+            "total_spent_delta": 0.0,
+        }
+        global_policy_payload = {
+            "min_noise_multiplier": 0.0,
+            "max_noise_multiplier": 0.1,
+            "require_encrypted_updates": True,
+        }
+        client = FakeAsyncClient(
+            get_responses={
+                f"{main.POLICY_MANAGER_URL}/policies/budget/agent-1": FakeGetResponse(budget_payload),
+                f"{main.POLICY_MANAGER_URL}/policies/global": FakeGetResponse(global_policy_payload),
+            }
+        )
+
+        with patch.object(main.httpx, "AsyncClient", return_value=client):
+            with self.assertRaises(main.HTTPException) as exc:
+                await main.start_local_round(round_id="r1", agent_id="agent-1")
+
+        self.assertEqual(exc.exception.status_code, 403)
+        self.assertEqual(exc.exception.detail, "Participation rejected: Configured noise multiplier violates global policy")
+
+    async def test_start_round_rejected_due_to_low_resources(self):
+        main.ENFORCE_PRIVACY_BUDGET = False
+        main.SIMULATE_LOW_RESOURCES = True
+        main.SIMULATE_CPU_LOAD = 95
+        main.SIMULATE_BATTERY_LEVEL = 80
+        
+        with self.assertRaises(main.HTTPException) as exc:
+            await main.start_local_round(round_id="r1", agent_id="agent-1")
+            
+        self.assertEqual(exc.exception.status_code, 403)
+        self.assertIn("Node resources exhausted", exc.exception.detail)
 
 
 if __name__ == "__main__":

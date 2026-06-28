@@ -25,8 +25,8 @@ The `fraud-dashboard` is the **dashboard (control screen)** of the system. It is
    - **How it works:** It pulls records from the coordinator to show how many rounds have run, which banks took part, their accuracy scores, and how much privacy limit has been used.
 
 5. **Shortcut Links (Operator Tooling Integration)**
-   - **What it does:** Provides quick shortcuts to admin dashboards (like the Kafka console and PostgreSQL admin).
-   - **How it works:** It embeds links directly inside the navigation bar so administrators can quickly manage the databases and message queues.
+   - **What it does:** Provides quick shortcuts to admin dashboards such as Kafka UI and the Redis dashboard used for coordinator workflow state.
+   - **How it works:** It embeds links directly inside the dashboard so administrators can quickly inspect messaging state and Redis-backed coordinator state.
 
 ---
 
@@ -43,6 +43,14 @@ The frontend reads variables at compile/run time to bind backend endpoints:
 
 ## Production Deployment (Nginx)
 In production, the dashboard is containerized and served using a light-weight Nginx configuration, which is set up to route API calls to local endpoints and fallback to `index.html` for single-page routing.
+
+The Nginx layer also proxies supporting operator consoles, including:
+- `Kafka UI` via `/kafka-ui/`
+- `RedisInsight` via `/redis-insight/`
+
+When running under Docker Compose, the dashboard links directly expose:
+- Kafka UI on `http://localhost:18080`
+- RedisInsight on `http://localhost:5540`
 
 ---
 

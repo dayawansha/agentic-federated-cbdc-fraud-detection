@@ -1,7 +1,7 @@
 # Development Status Gap Assessment
 ## Agentic Federated Learning Framework for CBDC Fraud Detection
 
-**Last Updated:** June 24, 2026  
+**Last Updated:** June 26, 2026  
 **Document Purpose:** Service-Level Gap Assessment  
 **Assessment Scope:** Requirements, design, and current microservice implementation  
 **Assessment Type:** Understanding gaps between intended design and current development
@@ -12,12 +12,13 @@
 
 This document explains the gap between the original project requirements/design and the current implementation at the **individual microservice level**.
 
-The key finding is:
+The updated key finding is:
 
 - the project has implemented the **intended 10 microservices**
 - the system is **architecturally aligned** with the design
-- several services are still implemented as **MVP-grade or prototype-grade versions**
-- the main gaps are in **depth, integration, autonomy, and security maturity**, not in the absence of services
+- several services were initially implemented as **MVP-grade or prototype-grade versions**
+- multiple high-severity gaps have now been reduced through targeted fixes in coordination, local autonomy, live graph learning, privacy, and alerting
+- the main remaining gaps are now more concentrated in **FL strategy breadth, production-grade secure aggregation, and research evaluation completeness**, not in the absence of services
 
 In simple terms, the system already looks like the intended architecture, but some services do not yet behave as fully as the original design expected.
 
@@ -31,18 +32,18 @@ In simple terms, the system already looks like the intended architecture, but so
 |------|--------|---------|
 | **Service Coverage** | Strong | All major planned microservices exist |
 | **Architecture Alignment** | Strong | Coordinator domain and Bank Node domain are both implemented |
-| **Integration Depth** | Medium | Some services exist but are not wired together exactly as intended |
-| **Agentic Behavior** | Medium-Low | Orchestration exists, but some "agentic" behavior is still workflow-driven |
-| **Privacy/Security Maturity** | Medium | Privacy utilities exist, but target-state security is not fully implemented |
+| **Integration Depth** | High | Core live service paths are now much better aligned, especially graph learning, protected update handling, and transaction-driven alerting |
+| **Agentic Behavior** | Medium-High | Autonomy has improved on both coordinator and local-agent sides, though deeper reasoning remains lighter than the original vision |
+| **Privacy/Security Maturity** | Medium-High | Secure-update cryptography is stronger, though still short of full dropout-tolerant protocol maturity |
 | **Research Evaluation Completeness** | Low-Medium | Prototype validation exists, but full experiment coverage is not yet represented in the repo |
 
 ### Main Gap Themes
 
 | Theme | Description |
 |------|-------------|
-| **Autonomy Gap** | Agents exist, but several decisions are still scripted rather than fully adaptive |
-| **Integration Gap** | Some services work well individually but are not connected in the exact flow described by the design |
-| **Security Depth Gap** | Protected update handling exists, but not full target-state enterprise security |
+| **Autonomy Gap** | Core autonomy checks and adaptive local planning now exist, but several decisions are still policy- and signal-driven rather than deeply reasoning-based |
+| **Integration Gap** | Major live-path mismatches were reduced substantially, though some target-state integrations are still simplified |
+| **Security Depth Gap** | Protected update handling is stronger now, but not yet equivalent to full dropout-tolerant secure aggregation |
 | **Research Gap** | The prototype is running, but broader evaluation and experiment artifacts are still limited |
 
 ---
@@ -53,8 +54,8 @@ In simple terms, the system already looks like the intended architecture, but so
 
 | Service | Expected in Design | Current Implementation | Gap Summary | Gap Severity |
 |--------|---------------------|------------------------|-------------|--------------|
-| **Agentic Coordinator** | Fully autonomous coordinator with durable state, intelligent participant selection, anomaly screening, and adaptive orchestration | Starts rounds, collects updates, validates metrics, negotiates weights, and triggers aggregation | More like an advanced workflow controller than a full autonomous meta-agent; state is mainly in memory and screening is heuristic | High |
-| **Federated Model Aggregator** | Secure aggregation engine with broader FL strategy support | Supports protected/encrypted payload handling and `FedAvg` / `WeightedFedAvg` | Aggregation is functional, but strategy depth is narrower than the design | Medium |
+| **Agentic Coordinator** | Fully autonomous coordinator with durable state, intelligent participant selection, anomaly screening, and adaptive orchestration | Starts rounds, restores/persists workflow state, selects agents using governance, reliability, runtime readiness, and local self-rejection, screens updates with metric and tensor-level checks, negotiates weights, and triggers aggregation | Strongly improved; remaining gap is that anomaly handling is still heuristic rather than full research-grade poisoning defense, and durability depends on Redis availability | Medium |
+| **Federated Model Aggregator** | Secure aggregation engine with broader FL strategy support | Supports protected/encrypted payload handling plus `FedAvg`, `WeightedFedAvg`, `PerformanceWeightedFedAvg`, `AdaptiveFedAvg`, `FedProxGNN`, `FedGraph`, and `RobustMedian` | Strategy depth is now materially improved; remaining limitations are mostly around production-grade secure aggregation and still broader experimental FL method coverage | Low |
 | **Policy Manager** | Governance, privacy budgets, compliance rules, auditability, secure aggregation policy support | Budgets, global policies, governance rules, audit logs, and mask escrow are implemented | Strong service, but compliance is system-policy level rather than full regulatory workflow level | Low |
 | **Model Registry** | Model versioning, metrics, artifact management, auditability, controlled retrieval | Stores model metadata in PostgreSQL and artifacts on disk or S3/MinIO | Core registry behavior is strong; the main gap is broader experiment and evaluation lifecycle linkage | Low |
 
@@ -62,12 +63,12 @@ In simple terms, the system already looks like the intended architecture, but so
 
 | Service | Expected in Design | Current Implementation | Gap Summary | Gap Severity |
 |--------|---------------------|------------------------|-------------|--------------|
-| **Local Agent** | Autonomous local decision-maker for participation, training, privacy, and local constraints | Coordinates training, privacy processing, submission, and inference-based alert publication | Works as an orchestrator, but true local autonomy is still limited | High |
-| **Local GNN Model** | Train on the institution's local transaction graph and graph-derived features | Trains on processed Elliptic++ CSV shards and supports inference | Model works, but it is not tightly connected to the live `transaction-graph` service | High |
-| **Privacy Layer** | Differential privacy, encrypted transport, secure aggregation support, privacy evaluation | DP noise, encryption, masking, and privacy evaluation endpoints are implemented | Privacy support exists, but cryptographic maturity is below target-state design language | Medium |
-| **Transaction Graph** | Local graph ingestion, storage, graph features, and CDC publication | Neo4j ingestion, features, centrality, temporal metrics, Kafka event publication | Service is good, but not used as centrally in the training pipeline as intended | Medium |
-| **Alerting** | Consume transaction events, detect fraud/risk, create alerts, notify operators | Consumes `fraud.alerts`, stores recent alerts in memory, broadcasts WS events, and sends notifications | Operates more like alert distribution than full transaction-driven fraud detection | High |
-| **Fraud Dashboard** | Real-time UI for monitoring, analytics, alerts, training status, and service health | Rich dashboard with analytics, service health, recent alerts, and inference watchlist | Strong implementation; main gap comes from backend simplifications rather than the dashboard itself | Low |
+| **Local Agent** | Autonomous local decision-maker for participation, training, privacy, and local constraints | Coordinates training, privacy processing, submission, inference-based alert publication, evaluates policy/resource/privacy constraints, and now derives an adaptive local execution plan with reasoning trace, dynamic epochs, noise, FedProx usage, and post-round inference decisions | Prototype-scope gap is now much smaller; remaining limitation is that planning is still policy- and signal-driven rather than a full reasoning-engine implementation | Low-Medium |
+| **Local GNN Model** | Train on the institution's local transaction graph and graph-derived features | Trains on processed Elliptic++ shards, supports inference, consumes transaction-aligned live graph export with richer graph-derived features, and now preserves live training under sparse labels using pseudo-label semi-supervision | Prototype-scope architectural mismatch is largely resolved; remaining work is mainly around richer self-supervised or production-grade delayed-label learning strategies | Low-Medium |
+| **Privacy Layer** | Differential privacy, encrypted transport, secure aggregation support, privacy evaluation | DP noise, encryption, stronger escrowed secure updates with `X25519 + HKDF + Fernet`, and privacy evaluation endpoints are implemented | Improved significantly; remaining gap is lack of full pairwise/dropout-tolerant secure aggregation or Shamir-style reconstruction | Medium |
+| **Transaction Graph** | Local graph ingestion, storage, graph features, and CDC publication | Neo4j ingestion, features, centrality, temporal metrics, Kafka event publication, and transaction-aligned tensor export for Local GNN | Strong alignment now; remaining gap is mostly broader production-scale evolution rather than service-role mismatch | Low |
+| **Alerting** | Consume transaction events, detect fraud/risk, create alerts, notify operators | Consumes both `transactions.events` and `fraud.alerts`, detects suspicious transactions, persists alerts, broadcasts WS events, and sends notifications | Role mismatch is largely fixed; remaining gap is that the detector is still rule-based rather than a richer multi-signal fraud scoring engine | Low |
+| **Fraud Dashboard** | Real-time UI for monitoring, analytics, alerts, training status, and service health | Rich dashboard with analytics, service health, recent alerts, inference watchlist, detector status, source distribution, and pipeline visibility | Very close to design; remaining gap is mainly dependency on future backend and experiment maturity rather than UI capability | Low |
 
 ---
 
@@ -93,12 +94,12 @@ In simple terms, the system already looks like the intended architecture, but so
 
 **Gap**
 - autonomy is still limited to workflow logic and heuristics
-- round state is not durably persisted as described in the design
-- malicious update handling is metric-based, not a deeper poisoning-analysis approach
-- runtime behavior is still close to a single-node MVP path
+- workflow durability is now implemented, but depends on Redis availability in deployment
+- malicious update handling is stronger, but still not a full adversarial-learning defense stack
+- runtime behavior is still closer to a prototype coordinator than a deeply adaptive research meta-agent
 
 **Assessment**
-- the service exists and is important, but it is not yet the full research-grade meta-agent originally envisioned
+- the service is now much closer to the intended design, with the remaining gap centered on depth rather than missing core behavior
 
 ### 2. Federated Model Aggregator
 
@@ -110,15 +111,16 @@ In simple terms, the system already looks like the intended architecture, but so
 **Current Role**
 - loads protected/encrypted model payloads
 - resolves encrypted submissions
-- performs `FedAvg` or `WeightedFedAvg`
+- performs `FedAvg`, `WeightedFedAvg`, `PerformanceWeightedFedAvg`, `AdaptiveFedAvg`, `FedProxGNN`, `FedGraph`, and `RobustMedian`
 - computes weighted global metrics
 
 **Gap**
-- only a small subset of possible strategies is implemented
-- aggregation behavior is still practical and MVP-oriented rather than broad and experimental
+- the broader prototype strategy family is now implemented and wired through the protected-update flow
+- remaining limitations are mainly around production-grade secure aggregation depth and even wider experimental FL strategy coverage
+- the aggregator is still practical and prototype-oriented rather than a full experimental FL research platform
 
 **Assessment**
-- solid prototype aggregator, but narrower than the full design ambition
+- now close to implemented prototype scope, with the main remaining gap centered on security protocol maturity rather than strategy absence
 
 ### 3. Policy Manager
 
@@ -173,18 +175,19 @@ In simple terms, the system already looks like the intended architecture, but so
 
 **Current Role**
 - pulls the global model
-- triggers local GNN training
+- derives an adaptive local execution plan based on budget, policy, previous performance, sparse-label signals, and recent fraud-risk indicators
+- triggers local GNN training with dynamic epochs, noise, FedProx, and pseudo-label settings
 - calls privacy-layer services
 - submits updates to the coordinator
-- publishes inference-driven alerts
+- publishes inference-driven alerts and records a reasoning trace for round behavior
 
 **Gap**
-- local readiness and participation are not deeply evaluated
-- "agentic" behavior is mostly workflow execution
-- local autonomy is present in structure more than in actual decision depth
+- participation is now evaluated against privacy, policy, and resource rules, and local execution is adaptively tuned each round
+- however, "agentic" behavior is still driven by policies and numeric signals rather than a deeper reasoning engine
+- local autonomy is now materially stronger in practice, with the remaining gap focused on reasoning depth rather than missing behavior
 
 **Assessment**
-- functionally useful, but still closer to a scripted orchestration service than a reasoning agent
+- now best described as implemented at prototype scope, with remaining differences mainly in reasoning sophistication
 
 ### 6. Local GNN Model
 
@@ -194,18 +197,19 @@ In simple terms, the system already looks like the intended architecture, but so
 - provide graph-native fraud inference
 
 **Current Role**
-- loads processed CSV shard files
-- builds graph tensors from preprocessed data
-- trains a hybrid GNN
+- loads processed CSV shard files when needed
+- fetches transaction-aligned live graph tensors from Transaction Graph
+- trains a hybrid GNN with richer graph-derived features
+- preserves live training under sparse labels by enabling pseudo-label semi-supervision instead of immediately falling back
 - exposes training and inference endpoints
 
 **Gap**
-- strongest mismatch in the Bank Node domain
-- model training uses static prepared datasets, not the live `transaction-graph` microservice
-- the intended graph-service-to-GNN integration is not fully realized
+- the strongest original mismatch has been reduced substantially
+- live graph training is now transaction-aligned, uses richer graph-derived features, and supports sparse-label mode
+- the main remaining gap is future production evolution toward richer self-supervised, delayed-label, or active-learning strategies
 
 **Assessment**
-- the model itself is good, but the implementation path is simpler than the architecture promised
+- now best described as implemented at prototype scope, with remaining work focused on future learning sophistication rather than architectural disconnect
 
 ### 7. Privacy Layer
 
@@ -222,12 +226,12 @@ In simple terms, the system already looks like the intended architecture, but so
 - exposes privacy evaluation and gradient clipping endpoints
 
 **Gap**
-- privacy support is real and useful
-- however, the privacy/security design is still prototype-grade rather than full target-state enterprise-grade
-- secure aggregation support is simpler than the stronger protocol described in the design
+- privacy support is real and meaningfully stronger than before
+- however, the design still aims beyond the current implementation toward full dropout-tolerant secure aggregation
+- secure aggregation support remains below the strongest protocol described in the design
 
 **Assessment**
-- a strong prototype privacy utility service with moderate maturity gap
+- a stronger and more credible prototype privacy service, with the remaining gap now focused on advanced protocol maturity
 
 ### 8. Transaction Graph
 
@@ -243,12 +247,12 @@ In simple terms, the system already looks like the intended architecture, but so
 - publishes transaction events to Kafka
 
 **Gap**
-- service functionality itself is good
-- main issue is that the ML side does not depend on it as directly as intended
-- it is underused in the actual model-training flow
+- service functionality itself is strong
+- the original ML integration gap has been reduced by the transaction-aligned export path
+- remaining work is mostly in future production evolution, not current service-role mismatch
 
 **Assessment**
-- one of the stronger bank-side services, but not as central to the learning pipeline as the design planned
+- one of the stronger bank-side services and now much more central to the learning pipeline than before
 
 ### 9. Alerting
 
@@ -259,18 +263,19 @@ In simple terms, the system already looks like the intended architecture, but so
 - notify operators and downstream systems
 
 **Current Role**
-- consumes `fraud.alerts`
-- stores recent alerts in memory
+- consumes `transactions.events` and `fraud.alerts`
+- detects suspicious transactions through rule-based checks
+- persists alert history
 - pushes WebSocket updates
 - sends notifications via email and webhook
 
 **Gap**
-- biggest role mismatch in the bank-side support services
-- it behaves more as an alert receiver/distributor than the main detector of suspicious transaction events
-- alert history is not persisted in a relational store despite that being implied in the design notes
+- the biggest role mismatch has been fixed at the prototype level
+- it now acts as a real transaction-stream detector and persists history
+- remaining gap is detector sophistication, not core service responsibility
 
 **Assessment**
-- operationally useful, but narrower than the original intended responsibility
+- now closely aligned with the design, with remaining differences mostly in scoring depth and production fraud-ops sophistication
 
 ### 10. Fraud Dashboard
 
@@ -287,12 +292,12 @@ In simple terms, the system already looks like the intended architecture, but so
 - uses polling and WebSocket updates
 
 **Gap**
-- smallest service-level gap
+- still one of the smallest service-level gaps
 - the dashboard is relatively strong
-- most limitations come from backend simplifications rather than the dashboard itself
+- backend simplifications have been reduced, and the UI now exposes detector state and alert-source visibility
 
 **Assessment**
-- the dashboard is ahead of several backend services in maturity
+- the dashboard remains one of the strongest services and is now better matched to the richer backend pipeline
 
 ---
 
@@ -304,17 +309,18 @@ In simple terms, the system already looks like the intended architecture, but so
 |--------|--------|
 | **Policy Manager** | Governance, policies, budgets, and audit trails are strongly represented |
 | **Model Registry** | Core artifact and metadata lifecycle is implemented well |
-| **Transaction Graph** | Graph service functionality is good and technically meaningful |
-| **Fraud Dashboard** | Rich operator-facing functionality is already present |
+| **Local Agent** | Adaptive local planning, privacy-aware participation, dynamic training control, and reasoning trace are now present |
+| **Local GNN Model** | Live graph training, FedProx support, and sparse-label semi-supervised learning now align closely with the prototype design direction |
+| **Transaction Graph** | Graph service functionality is strong and now directly supports the live Local GNN path |
+| **Fraud Dashboard** | Rich operator-facing functionality is present and now reflects a stronger backend detection pipeline |
 
 ### Largest Gaps to Design
 
 | Service | Reason |
 |--------|--------|
-| **Agentic Coordinator** | Still more workflow-driven than fully autonomous and durable |
-| **Local Agent** | Limited true local decision-making |
-| **Local GNN Model** | Not tightly integrated with the live graph-service architecture |
-| **Alerting** | Role shifted from fraud detection to alert distribution/notification |
+| **Agentic Coordinator** | Strong orchestration exists, but the remaining gap is still in deeper adaptive reasoning and research-grade malicious-update defense |
+| **Privacy Layer** | Stronger now, but still below full dropout-tolerant secure aggregation maturity |
+| **Research Evaluation Layer** | Cross-service experiment evidence and evaluation artifacts are still limited in the repo |
 
 ---
 
@@ -330,11 +336,11 @@ In simple terms, the system already looks like the intended architecture, but so
 
 ### What remains different from the original design
 
-- agentic behavior is lighter than initially described
-- some service interactions are simplified
-- graph learning is not fully live-service driven
-- alerting is not the primary fraud detector from transaction CDC flow
-- security and secure aggregation are not at full target-state maturity
+- agentic behavior is still lighter than initially described, even though local adaptive planning is now much stronger
+- some advanced service interactions are still simplified
+- graph learning is now live-service driven for the current prototype path and can continue under sparse labels
+- alerting now acts as the primary transaction-stream detector in the implemented CDC flow
+- security and secure aggregation are stronger, but not at full target-state maturity
 - research evaluation artifacts are still less complete than the design ambitions
 
 ---
@@ -343,7 +349,7 @@ In simple terms, the system already looks like the intended architecture, but so
 
 This project does **not** mainly suffer from missing services.
 
-Instead, the current gap is that several microservices are implemented as **working prototype versions** of what the design described as a more:
+Instead, the current gap is that the platform is now a **stronger working prototype**, and recent work has materially reduced gaps in aggregation strategy breadth, local autonomy, and sparse-label live graph learning, but it still falls short of the most advanced form of what the design described as a more:
 
 - autonomous
 - tightly integrated
@@ -352,7 +358,7 @@ Instead, the current gap is that several microservices are implemented as **work
 
 So the best summary is:
 
-**The development is architecturally correct, but behaviorally simplified.**
+**The development is now much closer to the design, with prototype-scope alignment now strong across most services, but it is still not fully research-complete or production-maximum in coordinator reasoning depth, secure aggregation maturity, and evaluation completeness.**
 
 ---
 
@@ -361,7 +367,10 @@ So the best summary is:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-06-24 | Created `devStatus-0.2.md` with service-level gap assessment between design/requirements and current implementation | GPT-5.4 |
+| 2026-06-24 | Updated gap assessment after fixing coordinator durability/screening, local-agent participation gating, live graph Local GNN integration, privacy-layer cryptographic hardening, transaction-stream alerting, and dashboard operational visibility | GPT-5.4 |
+| 2026-06-24 | Updated federated-model-aggregator assessment after adding `PerformanceWeightedFedAvg` and `AdaptiveFedAvg` with end-to-end protected-update support | GPT-5.4 |
+| 2026-06-26 | Updated status after implementing `FedProxGNN`, `FedGraph`, and `RobustMedian`, adding true FedProx local training, adaptive local-agent planning with reasoning traces, and sparse-label live-graph semi-supervised learning in the local GNN service | GPT-5.4 |
 
 ---
 
-*Last Updated: June 24, 2026*
+*Last Updated: June 26, 2026*

@@ -1,5 +1,6 @@
 import base64
 import builtins
+import json
 import pickle
 import hashlib
 import sys
@@ -63,12 +64,22 @@ class FakeTorchModule:
         def __le__(self, other):
             return FakeTorchModule._TensorVector([1.0 if value <= float(other) else 0.0 for value in self.values])
 
+        def __eq__(self, other):
+            if not isinstance(other, FakeTorchModule._TensorVector):
+                return False
+            return self.values == other.values
+
     class _Scalar:
         def __init__(self, value):
             self.value = float(value)
 
         def item(self):
             return self.value
+
+        def __eq__(self, other):
+            if not isinstance(other, FakeTorchModule._Scalar):
+                return False
+            return self.value == other.value
 
     class nn:
         class functional:
@@ -238,15 +249,29 @@ class TestPrivacyLayer(unittest.IsolatedAsyncioTestCase):
     async def test_prepare_secure_update_returns_masked_weights_and_encrypted_mask_share(self):
         protected_state = {"layer": FakeTorchModule._TensorVector([1.0, 2.0])}
         request = main.SecureAggregationPrepareRequest(
+            round_id="round-1",
+            agent_id="agent-a",
             weights=base64.b64encode(pickle.dumps(protected_state)).decode("ascii")
         )
 
         with patch.dict(sys.modules, {"torch": FakeTorchModule()}):
-            response = await main.prepare_secure_update(request)
+            with patch.object(main, "_fetch_escrow_public_key", return_value="ZXNjcm93LXB1YmxpYy1rZXk="):
+                with patch.object(
+                    main.privacy_module,
+                    "build_escrowed_secure_aggregation_artifacts",
+                    return_value=(pickle.dumps(protected_state), json.dumps({"scheme": "x25519-hkdf-fernet-v1"})),
+                ) as secure_mock:
+                    response = await main.prepare_secure_update(request)
 
         masked_state = pickle.loads(base64.b64decode(response.masked_weights))
         self.assertIn("layer", masked_state)
-        self.assertNotEqual(response.encrypted_mask_share, "")
+        self.assertEqual(json.loads(response.encrypted_mask_share)["scheme"], "x25519-hkdf-fernet-v1")
+        secure_mock.assert_called_once_with(
+            weights_dict=protected_state,
+            round_id="round-1",
+            agent_id="agent-a",
+            escrow_public_key_b64="ZXNjcm93LXB1YmxpYy1rZXk=",
+        )
 
     def test_clip_per_sample_gradients_math(self):
         try:

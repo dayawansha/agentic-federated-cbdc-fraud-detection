@@ -1,3 +1,26 @@
+"""
+================================================================================
+TRANSACTION GRAPH SERVICE - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of the Transaction Graph service as the bank's "Interactive Ledger Map" or
+"Financial Social Network."
+
+If you list transactions in a traditional spreadsheet, it is very hard to see circular
+payments or money laundering pathways. But this service stores payments in a graph
+database (Neo4j) where:
+- Circles (Nodes): Accounts and transactions.
+- Lines (Edges): The flow of money (who sent what to whom).
+
+Its core business roles are:
+1. LEDGER RECORDING: Receives new transaction details and adds them to the Neo4j graph.
+2. CHANGE DATA CAPTURE (CDC) STREAMING: Whenever a new transaction is recorded, it immediately
+   publishes an event to a Kafka stream (`transactions.events`). This alerts other services
+   (like the Alerting service) so they can verify the transaction in real-time.
+3. NETWORK ANALYTICS: Calculates graph features (e.g. "centrality" — how much of a hub an account
+   is, or "temporal metrics" — how fast money is entering and leaving) and exports these
+   features to train the GNN Model.
+================================================================================
+"""
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -95,6 +118,18 @@ async def get_account_temporal(account_id: str):
         return graph_service.get_account_temporal_features(account_id)
     except Exception as e:
         logger.error(f"Error in get_account_temporal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/graph/export-tensors")
+async def export_tensors():
+    """
+    Exports the full Neo4j transaction graph formatted as nodes features
+    and edge index list for PyTorch GNN training.
+    """
+    try:
+        return graph_service.export_tensors()
+    except Exception as e:
+        logger.error(f"Error in export_tensors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

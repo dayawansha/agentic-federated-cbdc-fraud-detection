@@ -300,7 +300,7 @@ The dashboard now routes:
 If the dashboard is healthy but the analytics and alerts panels are empty, bootstrap repeatable demo data with:
 
 ```bash
-bash scripts/bootstrap_dashboard_demo_data.sh
+bash scripts/demo_dashboard_lifecycle.sh seed
 ```
 
 For a full repeatable demo lifecycle, use:

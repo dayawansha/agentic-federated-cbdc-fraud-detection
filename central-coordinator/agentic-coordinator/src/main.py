@@ -1,9 +1,40 @@
+"""
+================================================================================
+AGENTIC COORDINATOR - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of this service as the "conductor" or the "referee" of a cooperative project
+shared among multiple banks. 
+
+In a traditional setup, to teach an AI how to detect transaction fraud (CBDC fraud), 
+everyone would have to send their private customer transactions to a single server.
+But privacy laws and security rules forbid banks from sharing their private ledger records.
+
+Federated Learning solves this:
+1. Each bank keeps its data safe at home and trains its own local AI model.
+2. The banks only share the "learnings" (called model weights or updates) — NOT the transaction data.
+3. This Coordinator orchestrates the process of combining those updates.
+
+THE COORDINATOR'S CORE STEPS:
+1. SELECTING AGENTS: The Coordinator asks the banks if they are ready, healthy, and have enough
+   privacy budget (allowance for information leak) and battery/power to participate.
+2. TRIGGERING TRAINING: It tells the selected banks to start training their local AI.
+3. WAITING FOR UPDATES: It waits for the banks to send back their model updates.
+4. SCREENING & GOVERNANCE: It checks if any bank's update looks suspicious or incorrect
+   (e.g., if a hacker is trying to upload a "poisoned" model to bypass fraud detection).
+5. WEIGHT CONSENSUS: The banks negotiate and vote on how much importance (weight) to give to 
+   each other's updates based on their local metrics and reliability.
+6. GLOBAL AGGREGATION: The Coordinator triggers the model aggregator to combine these safe updates
+   and registers the new global model version for everyone to use.
+================================================================================
+"""
 import logging
 import os
 import sys
 import hashlib
 import base64
 import io
+import json
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -12,6 +43,10 @@ from langgraph.graph import StateGraph, END
 import asyncio
 import httpx
 from datetime import datetime, timezone
+try:
+    import redis
+except Exception:  # pragma: no cover - optional dependency in tests
+    redis = None
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
@@ -33,6 +68,55 @@ FEDERATED_MODEL_AGGREGATOR_URL = os.getenv("FEDERATED_MODEL_AGGREGATOR_URL", "ht
 POLICY_MANAGER_URL = os.getenv("POLICY_MANAGER_URL", "http://localhost:8003")
 MODEL_REGISTRY_URL = os.getenv("MODEL_REGISTRY_URL", "http://localhost:8004")
 ROUND_WAIT_SECONDS = float(os.getenv("ROUND_WAIT_SECONDS", "300"))
+AGENT_HEALTH_TIMEOUT_SECONDS = float(os.getenv("AGENT_HEALTH_TIMEOUT_SECONDS", "10"))
+AGENT_STATUS_TIMEOUT_SECONDS = float(os.getenv("AGENT_STATUS_TIMEOUT_SECONDS", "10"))
+REQUIRE_AGENT_HEALTHY = os.getenv("REQUIRE_AGENT_HEALTHY", "true").strip().lower() not in {"0", "false", "no", "off"}
+REQUIRE_AGENT_RUNTIME_STATUS = os.getenv("REQUIRE_AGENT_RUNTIME_STATUS", "true").strip().lower() not in {"0", "false", "no", "off"}
+REDIS_ENABLED = os.getenv("REDIS_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+REDIS_URL = os.getenv("REDIS_URL", "")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+ENABLE_MODEL_DELTA_SCREENING = os.getenv("ENABLE_MODEL_DELTA_SCREENING", "true").strip().lower() not in {"0", "false", "no", "off"}
+MODEL_DELTA_MIN_UPDATES = max(3, int(os.getenv("MODEL_DELTA_MIN_UPDATES", "3")))
+MODEL_DELTA_MAD_MULTIPLIER = float(os.getenv("MODEL_DELTA_MAD_MULTIPLIER", "6.0"))
+MODEL_DELTA_MIN_COSINE_SIMILARITY = float(os.getenv("MODEL_DELTA_MIN_COSINE_SIMILARITY", "-0.15"))
+
+
+class WorkflowStateStore:
+    def __init__(self):
+        self.available = False
+        self.client = None
+        if not REDIS_ENABLED or redis is None:
+            return
+        try:
+            if REDIS_URL:
+                self.client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            else:
+                self.client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+            self.client.ping()
+            self.available = True
+            logger.info("Agentic coordinator connected to Redis workflow store")
+        except Exception as exc:
+            self.client = None
+            self.available = False
+            logger.warning("Redis workflow store unavailable, falling back to in-memory state only: %s", exc)
+
+    def save_json(self, key: str, value: Any) -> None:
+        if not self.available or self.client is None:
+            return
+        self.client.set(key, json.dumps(value))
+
+    def load_json(self, key: str, default: Any) -> Any:
+        if not self.available or self.client is None:
+            return default
+        payload = self.client.get(key)
+        if payload is None:
+            return default
+        try:
+            return json.loads(payload)
+        except Exception:
+            return default
 
 class UpdateSubmission(BaseModel):
     agent_id: str
@@ -58,12 +142,26 @@ round_updates: Dict[str, List[UpdateSubmission]] = {}
 round_expected_agents: Dict[str, List[str]] = {}
 round_events: Dict[str, asyncio.Event] = {}
 agent_profiles: Dict[str, Dict[str, float]] = {}
-SUPPORTED_AGGREGATION_STRATEGIES = {"FedAvg", "WeightedFedAvg"}
+round_state_snapshots: Dict[str, Dict[str, Any]] = {}
+WORKFLOW_STATE_STORE = WorkflowStateStore()
+WORKFLOW_STATE_UPDATES_KEY = "agentic-coordinator:round_updates"
+WORKFLOW_STATE_EXPECTED_KEY = "agentic-coordinator:round_expected_agents"
+WORKFLOW_STATE_PROFILES_KEY = "agentic-coordinator:agent_profiles"
+WORKFLOW_STATE_SNAPSHOTS_KEY = "agentic-coordinator:round_state_snapshots"
+SUPPORTED_AGGREGATION_STRATEGIES = {
+    "FedAvg",
+    "WeightedFedAvg",
+    "PerformanceWeightedFedAvg",
+    "AdaptiveFedAvg",
+    "FedProxGNN",
+    "FedGraph",
+    "RobustMedian",
+}
 DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
     "min_agents_per_round": 1,
     "max_rounds": 50,
     "aggregation_strategy": "FedAvg",
-    "fallback_aggregation_strategy": "WeightedFedAvg",
+    "fallback_aggregation_strategy": "AdaptiveFedAvg",
     "low_performance_accuracy": 0.8,
     "min_update_sample_size": 1,
     "min_update_accuracy": 0.5,
@@ -77,7 +175,8 @@ DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
     "require_encrypted_updates": True,
     "minimum_agent_reliability_score": 0.25,
     "adaptive_rejected_update_ratio": 0.25,
-    "adaptive_strategy_on_rejection": "WeightedFedAvg",
+    "adaptive_strategy_on_rejection": "PerformanceWeightedFedAvg",
+    "fedprox_mu": 1.0,
 }
 
 # --- LangGraph State Definition ---
@@ -93,6 +192,78 @@ class AgentState(TypedDict):
     selected_strategy: str
     current_step: str
     negotiated_weights: Optional[Dict[str, float]]
+
+
+def _submission_to_payload(update: UpdateSubmission) -> Dict[str, Any]:
+    return update.model_dump(mode="json")
+
+
+def _submission_from_payload(payload: Dict[str, Any]) -> UpdateSubmission:
+    return UpdateSubmission(**payload)
+
+
+def _build_round_state_snapshot(round_id: str, state: Optional[AgentState] = None) -> Dict[str, Any]:
+    snapshot: Dict[str, Any] = {
+        "round_id": round_id,
+        "expected_agents": list(round_expected_agents.get(round_id, [])),
+        "update_count": len(round_updates.get(round_id, [])),
+        "current_step": "unknown",
+        "active_agents": [],
+        "metrics": {},
+        "aggregation_complete": False,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if state:
+        snapshot.update(
+            {
+                "current_step": state.get("current_step", "unknown"),
+                "active_agents": list(state.get("active_agents", [])),
+                "metrics": dict(state.get("metrics", {}) or {}),
+                "aggregation_complete": bool(state.get("aggregation_complete", False)),
+                "selected_strategy": state.get("selected_strategy"),
+            }
+        )
+    return snapshot
+
+
+def _persist_workflow_state(round_id: Optional[str] = None, state: Optional[AgentState] = None) -> None:
+    if round_id:
+        round_state_snapshots[round_id] = _build_round_state_snapshot(round_id, state)
+    if not WORKFLOW_STATE_STORE.available:
+        return
+    WORKFLOW_STATE_STORE.save_json(
+        WORKFLOW_STATE_UPDATES_KEY,
+        {rid: [_submission_to_payload(update) for update in updates] for rid, updates in round_updates.items()},
+    )
+    WORKFLOW_STATE_STORE.save_json(WORKFLOW_STATE_EXPECTED_KEY, round_expected_agents)
+    WORKFLOW_STATE_STORE.save_json(WORKFLOW_STATE_PROFILES_KEY, agent_profiles)
+    WORKFLOW_STATE_STORE.save_json(WORKFLOW_STATE_SNAPSHOTS_KEY, round_state_snapshots)
+
+
+def _load_persisted_workflow_state() -> None:
+    if not WORKFLOW_STATE_STORE.available:
+        return
+    loaded_updates = WORKFLOW_STATE_STORE.load_json(WORKFLOW_STATE_UPDATES_KEY, {})
+    loaded_expected = WORKFLOW_STATE_STORE.load_json(WORKFLOW_STATE_EXPECTED_KEY, {})
+    loaded_profiles = WORKFLOW_STATE_STORE.load_json(WORKFLOW_STATE_PROFILES_KEY, {})
+    loaded_snapshots = WORKFLOW_STATE_STORE.load_json(WORKFLOW_STATE_SNAPSHOTS_KEY, {})
+
+    round_updates.clear()
+    for round_id, items in (loaded_updates or {}).items():
+        round_updates[str(round_id)] = [_submission_from_payload(dict(item)) for item in (items or [])]
+
+    round_expected_agents.clear()
+    round_expected_agents.update({str(round_id): list(agents or []) for round_id, agents in (loaded_expected or {}).items()})
+
+    agent_profiles.clear()
+    agent_profiles.update({str(agent_id): dict(profile or {}) for agent_id, profile in (loaded_profiles or {}).items()})
+
+    round_state_snapshots.clear()
+    round_state_snapshots.update({str(round_id): dict(snapshot or {}) for round_id, snapshot in (loaded_snapshots or {}).items()})
+
+    for round_id, snapshot in round_state_snapshots.items():
+        if str(snapshot.get("current_step")) != "round_complete":
+            round_events.setdefault(round_id, asyncio.Event())
 
 def _normalize_global_policies(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     policies = dict(DEFAULT_GLOBAL_POLICIES)
@@ -142,6 +313,57 @@ async def _get_governance_agent(client: httpx.AsyncClient, agent_id: str) -> Dic
             "notes": None,
         }
 
+
+async def _get_agent_runtime_snapshot(client: httpx.AsyncClient, agent_url: str) -> Dict[str, Any]:
+    snapshot: Dict[str, Any] = {
+        "agent_url": agent_url,
+        "reachable": False,
+        "healthy": False,
+        "status": {},
+        "error": None,
+    }
+
+    try:
+        health_response = await client.get(f"{agent_url}/health", timeout=AGENT_HEALTH_TIMEOUT_SECONDS)
+        health_response.raise_for_status()
+        health_payload = health_response.json() if hasattr(health_response, "json") else {}
+        snapshot["reachable"] = True
+        snapshot["healthy"] = str(health_payload.get("status", "")).lower() == "healthy"
+    except Exception as exc:
+        snapshot["error"] = f"health_check_failed: {exc}"
+        return snapshot
+
+    try:
+        status_response = await client.get(f"{agent_url}/agent/status", timeout=AGENT_STATUS_TIMEOUT_SECONDS)
+        status_response.raise_for_status()
+        snapshot["status"] = status_response.json() if hasattr(status_response, "json") else {}
+    except Exception as exc:
+        snapshot["error"] = f"status_check_failed: {exc}"
+        return snapshot
+
+    return snapshot
+
+
+def _runtime_snapshot_allows_selection(snapshot: Dict[str, Any], policies: Dict[str, Any]) -> Tuple[bool, str]:
+    if REQUIRE_AGENT_HEALTHY and not snapshot.get("healthy", False):
+        return False, "agent_unhealthy"
+
+    if REQUIRE_AGENT_RUNTIME_STATUS and not snapshot.get("status"):
+        return False, "agent_status_unavailable"
+
+    status = snapshot.get("status") or {}
+    decision = status.get("last_participation_decision") or {}
+    if decision and not bool(decision.get("allowed", True)):
+        return False, "agent_self_rejected_participation"
+
+    last_metrics = status.get("last_metrics") or {}
+    if "accuracy" in last_metrics:
+        accuracy = float(last_metrics.get("accuracy", 0.0))
+        if accuracy < float(policies.get("min_update_accuracy", 0.0)):
+            return False, "historical_accuracy_below_policy"
+
+    return True, "eligible"
+
 async def fetch_global_policies(state: AgentState):
     logger.info("Fetching global policies from Policy Manager")
     policies = dict(DEFAULT_GLOBAL_POLICIES)
@@ -163,6 +385,7 @@ async def fetch_global_policies(state: AgentState):
     state["policies"] = policies
     state["selected_strategy"] = preferred_strategy
     state["current_step"] = "policies_loaded"
+    _persist_workflow_state(state["round_id"], state)
     return state
 
 def _validate_updates(updates: List[UpdateSubmission], policies: Dict[str, Any]) -> Tuple[List[UpdateSubmission], List[Dict[str, Any]]]:
@@ -248,7 +471,8 @@ def _validate_updates(updates: List[UpdateSubmission], policies: Dict[str, Any])
 
         valid_updates.append(update)
 
-    return _screen_peer_outliers(valid_updates, rejected_updates, policies)
+    screened_updates, rejected_updates = _screen_peer_outliers(valid_updates, rejected_updates, policies)
+    return _screen_model_delta_anomalies(screened_updates, rejected_updates)
 
 def _check_metric_ranges(metrics: Dict[str, float]) -> Optional[str]:
     bounded_metrics = ("accuracy", "precision", "recall", "f1_score", "roc_auc")
@@ -318,6 +542,79 @@ def _screen_peer_outliers(
             continue
         if abs(loss - median_loss) > max_loss_peer_delta:
             rejected_updates.append({"agent_id": update.agent_id, "reason": "peer_loss_outlier", "loss": loss})
+            continue
+        screened_updates.append(update)
+
+    return screened_updates, rejected_updates
+
+
+def _screen_model_delta_anomalies(
+    valid_updates: List[UpdateSubmission],
+    rejected_updates: List[Dict[str, Any]],
+) -> Tuple[List[UpdateSubmission], List[Dict[str, Any]]]:
+    if not ENABLE_MODEL_DELTA_SCREENING or len(valid_updates) < MODEL_DELTA_MIN_UPDATES:
+        return valid_updates, rejected_updates
+
+    try:
+        import torch
+    except Exception as exc:
+        logger.info("Skipping model-delta anomaly screening because torch is unavailable: %s", exc)
+        return valid_updates, rejected_updates
+
+    decoded_vectors: List[Tuple[UpdateSubmission, Any]] = []
+    expected_numel: Optional[int] = None
+    for update in valid_updates:
+        try:
+            state_dict = torch.load(io.BytesIO(base64.b64decode(update.weights)))
+            vectors = []
+            for value in state_dict.values():
+                if getattr(value, "is_floating_point", lambda: False)():
+                    vectors.append(value.float().reshape(-1))
+            if not vectors:
+                rejected_updates.append({"agent_id": update.agent_id, "reason": "model_delta_payload_empty"})
+                continue
+            vector = torch.cat(vectors)
+            if expected_numel is None:
+                expected_numel = int(vector.numel())
+            elif int(vector.numel()) != expected_numel:
+                rejected_updates.append({"agent_id": update.agent_id, "reason": "model_delta_shape_mismatch"})
+                continue
+            decoded_vectors.append((update, vector))
+        except Exception as exc:
+            logger.warning("Failed to decode update payload for model-delta screening from %s: %s", update.agent_id, exc)
+            rejected_updates.append({"agent_id": update.agent_id, "reason": "model_delta_decode_failed"})
+
+    if len(decoded_vectors) < MODEL_DELTA_MIN_UPDATES:
+        return [update for update, _vector in decoded_vectors], rejected_updates
+
+    stacked = torch.stack([vector for _update, vector in decoded_vectors])
+    centroid = stacked.mean(dim=0)
+    distances = [float(torch.norm(vector - centroid).item()) for _update, vector in decoded_vectors]
+
+    sorted_distances = sorted(distances)
+    median_distance = sorted_distances[len(sorted_distances) // 2]
+    abs_deviations = sorted(abs(distance - median_distance) for distance in distances)
+    mad = abs_deviations[len(abs_deviations) // 2]
+    distance_threshold = median_distance + MODEL_DELTA_MAD_MULTIPLIER * max(mad, 1e-9)
+
+    screened_updates: List[UpdateSubmission] = []
+    centroid_norm = float(torch.norm(centroid).item())
+    for (update, vector), distance in zip(decoded_vectors, distances):
+        vector_norm = float(torch.norm(vector).item())
+        cosine_similarity = 1.0
+        if vector_norm > 0.0 and centroid_norm > 0.0:
+            cosine_similarity = float(torch.nn.functional.cosine_similarity(vector, centroid, dim=0).item())
+
+        if distance > distance_threshold or cosine_similarity < MODEL_DELTA_MIN_COSINE_SIMILARITY:
+            rejected_updates.append(
+                {
+                    "agent_id": update.agent_id,
+                    "reason": "model_delta_anomaly_detected",
+                    "delta_distance": distance,
+                    "distance_threshold": distance_threshold,
+                    "cosine_similarity": cosine_similarity,
+                }
+            )
             continue
         screened_updates.append(update)
 
@@ -406,25 +703,42 @@ async def _store_secure_aggregation_mask(update: UpdateSubmission) -> None:
 
 async def _fetch_aggregate_mask(round_id: str, updates: List[UpdateSubmission], strategy: str) -> str:
     async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{POLICY_MANAGER_URL}/secure-aggregation/masks/aggregate",
-            json={
-                "round_id": round_id,
-                "strategy": strategy,
-                "updates": [
-                    {
-                        "agent_id": update.agent_id,
-                        "sample_size": int(update.sample_size),
-                        "reliability_score": _agent_reliability(update.agent_id),
-                    }
-                    for update in updates
-                ],
-            },
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        return str(payload.get("aggregate_mask", ""))
+        try:
+            response = await client.post(
+                f"{POLICY_MANAGER_URL}/secure-aggregation/masks/aggregate",
+                json={
+                    "round_id": round_id,
+                    "strategy": strategy,
+                    "updates": [
+                        {
+                            "agent_id": update.agent_id,
+                            "sample_size": int(update.sample_size),
+                            "reliability_score": _agent_reliability(update.agent_id),
+                            "metrics": update.metrics,
+                        }
+                        for update in updates
+                    ],
+                },
+                timeout=60.0,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                return str(payload.get("aggregate_mask", ""))
+            else:
+                logger.warning(
+                    "Secure aggregation mask aggregate returned %s for round %s — proceeding without unmasking: %s",
+                    response.status_code,
+                    round_id,
+                    response.text,
+                )
+                return ""
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch aggregate mask for round %s — proceeding without unmasking: %s",
+                round_id,
+                exc,
+            )
+            return ""
 
 def _unmask_aggregated_weights(masked_aggregate_b64: str, aggregate_mask_b64: str) -> str:
     if not aggregate_mask_b64:
@@ -457,20 +771,40 @@ async def select_agents(state: AgentState):
             governance = await _get_governance_agent(client, agent_url)
             profile = _ensure_agent_profile(agent_url)
             if not governance.get("active", True):
+                logger.info("Skipping agent %s because governance marks it inactive", agent_url)
                 continue
             allowed_asset_types = [str(asset_type) for asset_type in (governance.get("allowed_asset_types") or ["CBDC"])]
             if not any(asset_type in policies["allowed_asset_types"] for asset_type in allowed_asset_types):
+                logger.info("Skipping agent %s because allowed asset types do not match current policy", agent_url)
                 continue
             min_reliability = max(
                 float(governance.get("minimum_reliability_score", 0.0)),
                 float(policies.get("minimum_agent_reliability_score", 0.0)),
             )
             if float(profile.get("reliability_score", 1.0)) < min_reliability:
+                logger.info(
+                    "Skipping agent %s because reliability %.4f is below threshold %.4f",
+                    agent_url,
+                    float(profile.get("reliability_score", 1.0)),
+                    min_reliability,
+                )
+                continue
+
+            snapshot = await _get_agent_runtime_snapshot(client, agent_url)
+            if snapshot.get("error") and (REQUIRE_AGENT_HEALTHY or REQUIRE_AGENT_RUNTIME_STATUS):
+                logger.info("Skipping agent %s because runtime snapshot failed: %s", agent_url, snapshot.get("error"))
+                continue
+
+            runtime_allowed, runtime_reason = _runtime_snapshot_allows_selection(snapshot, policies)
+            if not runtime_allowed:
+                logger.info("Skipping agent %s because runtime readiness check returned %s", agent_url, runtime_reason)
                 continue
             selected_agents.append(agent_url)
 
-    state['active_agents'] = selected_agents or configured_agents
+    state['active_agents'] = selected_agents
+    round_expected_agents[state["round_id"]] = list(selected_agents)
     state['current_step'] = "training_triggered"
+    _persist_workflow_state(state["round_id"], state)
     return state
 
 async def trigger_training(state: AgentState):
@@ -478,11 +812,17 @@ async def trigger_training(state: AgentState):
     
     async with httpx.AsyncClient() as client:
         tasks = []
+        fedprox_mu = float(state.get("policies", {}).get("fedprox_mu", 1.0))
         for agent_url in state['active_agents']:
             # Call each local agent to start its local round
             tasks.append(client.post(
                 f"{agent_url}/agent/round/start",
-                params={"round_id": state['round_id'], "agent_id": agent_url}
+                params={
+                    "round_id": state['round_id'],
+                    "agent_id": agent_url,
+                    "selected_strategy": state.get("selected_strategy", "FedAvg"),
+                    "fedprox_mu": fedprox_mu,
+                }
             ))
         
         responses = await asyncio.gather(*tasks, return_exceptions=True)
@@ -495,6 +835,7 @@ async def trigger_training(state: AgentState):
                 logger.error(f"Agent {state['active_agents'][i]} failed: {resp.text}")
 
     state['current_step'] = "waiting_for_updates"
+    _persist_workflow_state(state["round_id"], state)
     return state
 
 async def wait_for_updates(state: AgentState):
@@ -512,6 +853,7 @@ async def wait_for_updates(state: AgentState):
     received = round_updates.get(round_id, [])
     state["updates_received"] = received
     state["current_step"] = "aggregating"
+    _persist_workflow_state(round_id, state)
     return state
 
 async def negotiate_weights(state: AgentState):
@@ -524,7 +866,7 @@ async def negotiate_weights(state: AgentState):
         return state
 
     policies = _normalize_global_policies(state.get("policies"))
-    valid_updates, rejected_updates = _validate_updates(updates, policies)
+    valid_updates, _rejected_updates = _validate_updates(updates, policies)
     
     if not valid_updates:
         state["negotiated_weights"] = None
@@ -577,6 +919,7 @@ async def negotiate_weights(state: AgentState):
         logger.warning("Fewer than 50% of valid agents participated in negotiation. Bypassing peer-negotiation consensus.")
         state["negotiated_weights"] = None
         state["current_step"] = "negotiation_fallback"
+        _persist_workflow_state(round_id, state)
         return state
 
     # Check standard deviation of weight proposals for each agent
@@ -594,7 +937,7 @@ async def negotiate_weights(state: AgentState):
 
     for target_agent in agent_ids:
         proposed_vals = []
-        for proposer, proposed_w in proposals.items():
+        for _proposer, proposed_w in proposals.items():
             val = proposed_w.get(target_agent)
             if val is not None:
                 proposed_vals.append(float(val))
@@ -638,6 +981,7 @@ async def negotiate_weights(state: AgentState):
         state["negotiated_weights"] = None
         state["current_step"] = "negotiation_no_consensus"
 
+    _persist_workflow_state(round_id, state)
     return state
 
 async def aggregate_results(state: AgentState):
@@ -649,6 +993,7 @@ async def aggregate_results(state: AgentState):
         state["valid_updates"] = []
         state["rejected_updates"] = []
         state["current_step"] = "round_complete"
+        _persist_workflow_state(round_id, state)
         return state
 
     policies = _normalize_global_policies(state.get("policies"))
@@ -665,10 +1010,20 @@ async def aggregate_results(state: AgentState):
             "rejected_updates": float(len(rejected_updates)),
         }
         state["current_step"] = "round_complete"
+        _persist_workflow_state(round_id, state)
         return state
 
     async with httpx.AsyncClient() as client:
         negotiated = state.get("negotiated_weights") or {}
+        global_reference_weights = None
+        if state["selected_strategy"] == "FedProxGNN":
+            try:
+                latest_model_response = await client.get(f"{MODEL_REGISTRY_URL}/models/latest/weights", timeout=60.0)
+                if latest_model_response.status_code == 200:
+                    latest_model_payload = latest_model_response.json()
+                    global_reference_weights = latest_model_payload.get("weights")
+            except Exception as exc:
+                logger.warning("FedProxGNN reference model fetch failed, falling back to peer-centroid reference: %s", exc)
         agg_payload = {
             "round_id": round_id,
             "updates": [
@@ -689,7 +1044,9 @@ async def aggregate_results(state: AgentState):
             ],
             "strategy": state["selected_strategy"],
             "noise_multiplier": 0.0,
+            "global_reference_weights": global_reference_weights,
         }
+    try:
         agg_resp = await client.post(f"{FEDERATED_MODEL_AGGREGATOR_URL}/aggregate", json=agg_payload, timeout=180.0)
         if agg_resp.status_code != 200:
             raise HTTPException(status_code=500, detail=f"Aggregation failed: {agg_resp.text}")
@@ -703,7 +1060,7 @@ async def aggregate_results(state: AgentState):
         state["metrics"]["rejected_updates"] = float(len(rejected_updates))
 
         try:
-            await client.post(
+            reg_response = await client.post(
                 f"{MODEL_REGISTRY_URL}/models/register",
                 json={
                     "metrics": state["metrics"],
@@ -713,6 +1070,23 @@ async def aggregate_results(state: AgentState):
                 },
                 timeout=60.0,
             )
+            if reg_response.status_code == 200:
+                reg_payload = reg_response.json()
+                registered_version_id = reg_payload.get("version_id")
+                state["metrics"]["registered_version_id"] = 1.0  # sentinel — real id stored below
+                state["metrics"]["registry_registered"] = 1.0
+                logger.info(
+                    "Successfully registered aggregated model with version_id=%s for round %s",
+                    registered_version_id,
+                    round_id,
+                )
+            else:
+                logger.warning(
+                    "Model registry registration returned non-200 status %s for round %s: %s",
+                    reg_response.status_code,
+                    round_id,
+                    reg_response.text,
+                )
         except Exception as e:
             logger.warning(f"Model registry registration failed: {e}")
 
@@ -726,7 +1100,19 @@ async def aggregate_results(state: AgentState):
             except Exception as e:
                 logger.warning(f"Policy budget update failed for {u.agent_id}: {e}")
 
+    except HTTPException:
+        raise
+    except Exception as agg_exc:
+        logger.error(
+            "Unexpected error during aggregation for round %s — round marked incomplete: %s",
+            round_id,
+            agg_exc,
+        )
+        state["aggregation_complete"] = False
+        state.setdefault("metrics", {})["aggregation_error"] = 1.0
+
     state["current_step"] = "round_complete"
+    _persist_workflow_state(round_id, state)
     return state
 
 # --- Graph Construction ---
@@ -749,7 +1135,13 @@ workflow.add_edge("aggregate_results", END)
 app_graph = workflow.compile()
 
 # --- FastAPI Setup ---
-app = FastAPI(title="Agentic Coordinator Service")
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
+    _load_persisted_workflow_state()
+    yield
+
+
+app = FastAPI(title="Agentic Coordinator Service", lifespan=app_lifespan)
 
 @app.get("/health")
 async def health_check():
@@ -776,6 +1168,7 @@ async def submit_update(update: UpdateSubmission):
 
     updates = round_updates.setdefault(update.round_id, [])
     updates.append(update)
+    _persist_workflow_state(update.round_id)
 
     expected = round_expected_agents.get(update.round_id, [])
     if expected and len({u.agent_id for u in updates}) >= len(expected):
@@ -784,15 +1177,17 @@ async def submit_update(update: UpdateSubmission):
             event = asyncio.Event()
             round_events[update.round_id] = event
         event.set()
+        _persist_workflow_state(update.round_id)
         return SubmissionAck(accepted=True, message="Update received (round complete)")
 
+    _persist_workflow_state(update.round_id)
     return SubmissionAck(accepted=True, message="Update received")
 
 @app.post("/rounds/start")
 async def start_round(round_id: str):
     logger.info(f"Starting federated round: {round_id}")
     round_updates[round_id] = []
-    round_expected_agents[round_id] = LOCAL_AGENT_URLS
+    round_expected_agents[round_id] = []
     round_events[round_id] = asyncio.Event()
     initial_state: AgentState = {
         "round_id": round_id,
@@ -807,9 +1202,13 @@ async def start_round(round_id: str):
         "current_step": "init",
         "negotiated_weights": None
     }
+    _persist_workflow_state(round_id, initial_state)
     
     # Run the agentic workflow
     final_state = await app_graph.ainvoke(initial_state)
+    if isinstance(final_state, dict):
+        round_expected_agents[round_id] = list(final_state.get("active_agents", []) or [])
+        _persist_workflow_state(round_id, final_state)
     return {"status": "success", "final_state": final_state}
 
 @app.post("/consensus/propose-fraud-pattern")

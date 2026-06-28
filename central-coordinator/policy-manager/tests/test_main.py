@@ -1,6 +1,8 @@
 import asyncio
 import base64
+import hashlib
 import importlib
+import json
 import io
 import os
 import pickle
@@ -11,6 +13,10 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 REPO_ROOT = Path("/Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection")
 SERVICE_SRC = REPO_ROOT / "central-coordinator" / "policy-manager" / "src"
@@ -71,6 +77,39 @@ def _serialize_mask(value: float) -> str:
     fake_torch.save({"weight": fake_torch.Tensor(value)}, buffer)
     encrypted = main.TRANSPORT_CIPHER.encrypt(buffer.getvalue())
     return base64.b64encode(encrypted).decode("ascii")
+
+
+def _serialize_escrow_mask(value: float, round_id: str, agent_id: str) -> str:
+    fake_torch = _install_fake_torch()
+    buffer = io.BytesIO()
+    fake_torch.save({"weight": fake_torch.Tensor(value)}, buffer)
+    payload = buffer.getvalue()
+
+    ephemeral_private_key = x25519.X25519PrivateKey.generate()
+    escrow_public_key = x25519.X25519PublicKey.from_public_bytes(main.ESCROW_PUBLIC_KEY)
+    shared_secret = ephemeral_private_key.exchange(escrow_public_key)
+    derived_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=f"secure-aggregation:{round_id}:{agent_id}".encode("utf-8"),
+    ).derive(shared_secret)
+    cipher = Fernet(base64.urlsafe_b64encode(derived_key))
+    ciphertext = cipher.encrypt(payload)
+    package = {
+        "scheme": "x25519-hkdf-fernet-v1",
+        "round_id": round_id,
+        "agent_id": agent_id,
+        "ephemeral_public_key": base64.b64encode(
+            ephemeral_private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+        ).decode("ascii"),
+        "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+        "mask_commitment": hashlib.sha256(payload).hexdigest(),
+    }
+    return json.dumps(package, separators=(",", ":"))
 
 
 def _deserialize_mask(mask_b64: str):
@@ -146,7 +185,9 @@ class TestPolicyManager(unittest.TestCase):
 
         self.assertEqual(policies["min_agents_per_round"], 1)
         self.assertEqual(policies["aggregation_strategy"], "FedAvg")
-        self.assertEqual(policies["fallback_aggregation_strategy"], "WeightedFedAvg")
+        self.assertEqual(policies["fallback_aggregation_strategy"], "AdaptiveFedAvg")
+        self.assertEqual(policies["adaptive_strategy_on_rejection"], "PerformanceWeightedFedAvg")
+        self.assertEqual(policies["fedprox_mu"], 1.0)
         self.assertEqual(policies["required_metrics"], ["accuracy", "f1_score"])
         self.assertGreaterEqual(policies["min_update_accuracy"], 0.5)
         self.assertGreaterEqual(policies["min_update_sample_size"], 1)
@@ -159,16 +200,21 @@ class TestPolicyManager(unittest.TestCase):
         updated = asyncio.run(
             main.update_global_policies(
                 main.GlobalPolicyUpdateRequest(
-                    policies={"minimum_agent_reliability_score": 0.75, "aggregation_strategy": "WeightedFedAvg"},
+                    policies={"minimum_agent_reliability_score": 0.75, "aggregation_strategy": "AdaptiveFedAvg"},
                     updated_by="tester",
                 )
             )
         )
 
-        self.assertEqual(updated["aggregation_strategy"], "WeightedFedAvg")
+        self.assertEqual(updated["aggregation_strategy"], "AdaptiveFedAvg")
         self.assertEqual(updated["updated_by"], "tester")
         self.assertGreaterEqual(updated["policy_version"], 2)
         self.assertAlmostEqual(updated["minimum_agent_reliability_score"], 0.75)
+
+    def test_exposes_secure_aggregation_escrow_public_key(self):
+        response = asyncio.run(main.get_secure_aggregation_escrow_public_key())
+        self.assertEqual(response.scheme, "x25519-hkdf-fernet-v1")
+        self.assertTrue(response.public_key)
 
     def test_governance_agent_upsert_and_audit_log(self):
         agent = asyncio.run(
@@ -198,7 +244,7 @@ class TestPolicyManager(unittest.TestCase):
                     main.SecureAggregationMaskSubmitRequest(
                         round_id="round-mask",
                         agent_id="agent-a",
-                        encrypted_mask_share=_serialize_mask(2.0),
+                        encrypted_mask_share=_serialize_escrow_mask(2.0, "round-mask", "agent-a"),
                     )
                 )
             )
@@ -207,7 +253,7 @@ class TestPolicyManager(unittest.TestCase):
                     main.SecureAggregationMaskSubmitRequest(
                         round_id="round-mask",
                         agent_id="agent-b",
-                        encrypted_mask_share=_serialize_mask(4.0),
+                        encrypted_mask_share=_serialize_escrow_mask(4.0, "round-mask", "agent-b"),
                     )
                 )
             )
@@ -227,6 +273,80 @@ class TestPolicyManager(unittest.TestCase):
         state = _deserialize_mask(response.aggregate_mask)
         self.assertEqual(response.participant_count, 2)
         self.assertAlmostEqual(state["weight"].value, 3.5)
+
+    def test_secure_aggregation_masks_support_adaptive_weighting(self):
+        with patch.dict(sys.modules, {"torch": _install_fake_torch()}):
+            asyncio.run(
+                main.submit_secure_aggregation_mask(
+                    main.SecureAggregationMaskSubmitRequest(
+                        round_id="round-mask-adaptive",
+                        agent_id="agent-a",
+                        encrypted_mask_share=_serialize_escrow_mask(1.0, "round-mask-adaptive", "agent-a"),
+                    )
+                )
+            )
+            asyncio.run(
+                main.submit_secure_aggregation_mask(
+                    main.SecureAggregationMaskSubmitRequest(
+                        round_id="round-mask-adaptive",
+                        agent_id="agent-b",
+                        encrypted_mask_share=_serialize_escrow_mask(5.0, "round-mask-adaptive", "agent-b"),
+                    )
+                )
+            )
+            response = asyncio.run(
+                main.aggregate_secure_aggregation_masks(
+                    main.SecureAggregationMaskAggregateRequest(
+                        round_id="round-mask-adaptive",
+                        strategy="AdaptiveFedAvg",
+                        updates=[
+                            main.SecureAggregationMaskAggregateItem(
+                                agent_id="agent-a",
+                                sample_size=2,
+                                reliability_score=0.2,
+                                metrics={"accuracy": 0.5, "f1_score": 0.48, "loss": 0.9},
+                            ),
+                            main.SecureAggregationMaskAggregateItem(
+                                agent_id="agent-b",
+                                sample_size=1,
+                                reliability_score=1.0,
+                                metrics={"accuracy": 0.96, "f1_score": 0.95, "loss": 0.05},
+                            ),
+                        ],
+                    )
+                )
+            )
+
+        state = _deserialize_mask(response.aggregate_mask)
+        self.assertEqual(response.participant_count, 2)
+        self.assertGreater(state["weight"].value, 4.0)
+
+    def test_secure_aggregation_masks_legacy_transport_format_still_supported(self):
+        with patch.dict(sys.modules, {"torch": _install_fake_torch()}):
+            asyncio.run(
+                main.submit_secure_aggregation_mask(
+                    main.SecureAggregationMaskSubmitRequest(
+                        round_id="round-mask-legacy",
+                        agent_id="agent-a",
+                        encrypted_mask_share=_serialize_mask(1.0),
+                    )
+                )
+            )
+            response = asyncio.run(
+                main.aggregate_secure_aggregation_masks(
+                    main.SecureAggregationMaskAggregateRequest(
+                        round_id="round-mask-legacy",
+                        strategy="FedAvg",
+                        updates=[
+                            main.SecureAggregationMaskAggregateItem(agent_id="agent-a", sample_size=1, reliability_score=1.0),
+                        ],
+                    )
+                )
+            )
+
+        state = _deserialize_mask(response.aggregate_mask)
+        self.assertEqual(response.participant_count, 1)
+        self.assertAlmostEqual(state["weight"].value, 1.0)
 
 
 if __name__ == "__main__":

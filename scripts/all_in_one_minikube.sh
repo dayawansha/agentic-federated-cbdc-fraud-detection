@@ -8,6 +8,8 @@ STATE_DIR="${ROOT_DIR}/.local-state/all-in-one"
 PID_FILE="${STATE_DIR}/port-forwards.pid"
 META_FILE="${STATE_DIR}/runtime.env"
 LOG_DIR="${STATE_DIR}/logs"
+source "${ROOT_DIR}/scripts/deploy_common.sh"
+source "${ROOT_DIR}/scripts/minikube_release_common.sh"
 
 COMMAND="${1:-up}"
 if [[ $# -gt 0 ]]; then
@@ -28,6 +30,7 @@ START_MINIKUBE=false
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 MINIKUBE_MEMORY="${MINIKUBE_MEMORY:-8192}"
 MINIKUBE_DISK_SIZE="${MINIKUBE_DISK_SIZE:-40g}"
+TAG_PREFIX="${TAG_PREFIX:-local}"
 
 PORT_FORWARDS=(
   "agentic-coordinator|service/agentic-coordinator|8001:8001"
@@ -78,13 +81,6 @@ Examples:
   bash scripts/all_in_one_minikube.sh status
   bash scripts/all_in_one_minikube.sh down
 EOF
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Missing required command: $1" >&2
-    exit 1
-  fi
 }
 
 ensure_state_dirs() {
@@ -143,16 +139,6 @@ parse_up_args() {
   done
 }
 
-check_context() {
-  local current_context
-  current_context="$(kubectl config current-context)"
-  if [[ "${current_context}" != "${EXPECTED_CONTEXT}" ]]; then
-    echo "Current kubectl context is '${current_context}', expected '${EXPECTED_CONTEXT}'." >&2
-    echo "Run: kubectl config use-context ${EXPECTED_CONTEXT}" >&2
-    exit 1
-  fi
-}
-
 ensure_minikube_running() {
   if minikube -p "${MINIKUBE_PROFILE}" status >/dev/null 2>&1; then
     return 0
@@ -178,13 +164,7 @@ resolve_tag() {
   if [[ -n "${IMAGE_TAG}" ]]; then
     return 0
   fi
-  IMAGE_TAG="$(
-    MINIKUBE_PROFILE="${MINIKUBE_PROFILE}" \
-    EXPECTED_CONTEXT="${EXPECTED_CONTEXT}" \
-    NAMESPACE="${NAMESPACE}" \
-    RELEASE_NAME="${RELEASE_NAME}" \
-    bash "${SCRIPT_DIR}/local_minikube_release.sh" --print-tag
-  )"
+  IMAGE_TAG="$(generate_local_release_tag "${TAG_PREFIX}")"
 }
 
 deploy_stack() {
@@ -266,14 +246,13 @@ start_port_forwards() {
 
 record_runtime() {
   ensure_state_dirs
-  cat > "${META_FILE}" <<EOF
-IMAGE_TAG=${IMAGE_TAG}
-MINIKUBE_PROFILE=${MINIKUBE_PROFILE}
-EXPECTED_CONTEXT=${EXPECTED_CONTEXT}
-NAMESPACE=${NAMESPACE}
-RELEASE_NAME=${RELEASE_NAME}
-STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
+  write_env_state_file "${META_FILE}" \
+    "IMAGE_TAG=${IMAGE_TAG}" \
+    "MINIKUBE_PROFILE=${MINIKUBE_PROFILE}" \
+    "EXPECTED_CONTEXT=${EXPECTED_CONTEXT}" \
+    "NAMESPACE=${NAMESPACE}" \
+    "RELEASE_NAME=${RELEASE_NAME}" \
+    "STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 
 seed_demo_data() {
@@ -283,7 +262,7 @@ seed_demo_data() {
   fi
 
   echo "Bootstrapping demo dashboard data..."
-  bash "${SCRIPT_DIR}/bootstrap_dashboard_demo_data.sh"
+  bash "${SCRIPT_DIR}/demo_dashboard_lifecycle.sh" seed
 }
 
 run_health_checks() {
@@ -338,11 +317,7 @@ run_e2e_test() {
 
 show_status() {
   echo "Release status:"
-  if [[ -f "${META_FILE}" ]]; then
-    cat "${META_FILE}"
-  else
-    echo "No runtime metadata found."
-  fi
+  print_env_state_file "${META_FILE}" "No runtime metadata found."
 
   echo
   echo "Pods:"
@@ -431,7 +406,7 @@ case "${COMMAND}" in
     parse_up_args "$@"
     ensure_minikube_running
     kubectl config use-context "${EXPECTED_CONTEXT}" >/dev/null 2>&1 || true
-    check_context
+    ensure_expected_context "${EXPECTED_CONTEXT}" "Run: kubectl config use-context ${EXPECTED_CONTEXT}"
     resolve_tag
     deploy_stack
     start_port_forwards

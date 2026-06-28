@@ -8,10 +8,10 @@ Coverage:
 """
 import os
 import sys
-import json
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Bootstrap: add src/ to path so imports work without installing the package
@@ -277,8 +277,11 @@ class TestStoreRecentAlert(unittest.TestCase):
         if "confluent_kafka" not in sys.modules:
             ck = types.ModuleType("confluent_kafka")
             ck.Consumer = MagicMock()
+            ck.Producer = MagicMock()
             ck.KafkaError = MagicMock()
             sys.modules["confluent_kafka"] = ck
+        else:
+            sys.modules["confluent_kafka"].Producer = MagicMock()
 
         # Patch the src.notifications import path used by main.py
         fake_notif = MagicMock()
@@ -321,6 +324,35 @@ class TestStoreRecentAlert(unittest.TestCase):
         self.main._store_recent_alert({"severity": "low"})
         self.assertEqual(len(self.main.recent_alerts), 1)
 
+    def test_transaction_stream_detector_builds_alert_for_high_risk_transaction(self):
+        payload = self.main._build_transaction_stream_alert(
+            {
+                "transaction_id": "tx-100",
+                "source_account": "acct-a",
+                "target_account": "acct-b",
+                "amount": 60000,
+                "timestamp": "2026-06-24T12:00:00+00:00",
+                "metadata": {"repeat_count": 7},
+            }
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["txId"], "tx-100")
+        self.assertEqual(payload["source"], "transaction-stream-detector")
+        self.assertIn(payload["severity"], {"critical", "high"})
+
+    def test_transaction_stream_detector_ignores_low_risk_transaction(self):
+        payload = self.main._build_transaction_stream_alert(
+            {
+                "transaction_id": "tx-101",
+                "source_account": "acct-a",
+                "target_account": "acct-b",
+                "amount": 50,
+                "metadata": {},
+            }
+        )
+        self.assertIsNone(payload)
+
 
 # ===========================================================================
 # main.py — FastAPI endpoint tests via TestClient
@@ -333,8 +365,11 @@ class TestAlertingAPIEndpoints(unittest.TestCase):
         if "confluent_kafka" not in sys.modules:
             ck = types.ModuleType("confluent_kafka")
             ck.Consumer = MagicMock()
+            ck.Producer = MagicMock()
             ck.KafkaError = MagicMock()
             sys.modules["confluent_kafka"] = ck
+        else:
+            sys.modules["confluent_kafka"].Producer = MagicMock()
 
         fake_notif = MagicMock()
         fake_notif.dispatch_notifications.return_value = []
@@ -408,6 +443,91 @@ class TestAlertingAPIEndpoints(unittest.TestCase):
         resp = self._client().get("/alerts/channels")
         body = resp.json()
         self.assertEqual(body["configured_channel_count"], 1)
+
+    def test_get_summary_returns_detector_and_source_counts(self):
+        self.main._store_recent_alert({"alert_id": "SUM-1", "severity": "critical", "source": "transaction-stream-detector"})
+        self.main._store_recent_alert({"alert_id": "SUM-2", "severity": "high", "source": "local-agent-inference"})
+
+        resp = self._client().get("/alerts/summary?limit=10")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["detector_enabled"])
+        self.assertEqual(body["severity_counts"]["critical"], 1)
+        self.assertEqual(body["source_counts"]["transaction-stream-detector"], 1)
+        self.assertEqual(body["source_counts"]["local-agent-inference"], 1)
+
+
+class TestAlertPersistence(unittest.TestCase):
+    def setUp(self):
+        import types
+        if "confluent_kafka" not in sys.modules:
+            ck = types.ModuleType("confluent_kafka")
+            ck.Consumer = MagicMock()
+            ck.Producer = MagicMock()
+            ck.KafkaError = MagicMock()
+            sys.modules["confluent_kafka"] = ck
+        else:
+            sys.modules["confluent_kafka"].Producer = MagicMock()
+
+        fake_notif = MagicMock()
+        fake_notif.dispatch_notifications.return_value = []
+        fake_notif.get_notification_channels.return_value = []
+        sys.modules["src.notifications"] = fake_notif
+
+        self._tmp_db = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        self._tmp_db.close()
+
+        import importlib
+        with patch.dict(os.environ, {"DATABASE_URL": f"sqlite:///{self._tmp_db.name}"}, clear=False):
+            import main as main_module
+            importlib.reload(main_module)
+            self.main = main_module
+            self.main._setup_database()
+
+    def tearDown(self):
+        if getattr(self.main, "engine", None) is not None:
+            self.main.engine.dispose()
+        if os.path.exists(self._tmp_db.name):
+            os.unlink(self._tmp_db.name)
+
+    def test_store_recent_alert_persists_to_database(self):
+        payload = {
+            "alert_id": "DB-1",
+            "txId": 101,
+            "severity": "critical",
+            "confidence_score": 0.97,
+            "status": "open",
+            "received_at": "2026-06-24T12:00:00+00:00",
+        }
+
+        self.main._store_recent_alert(payload)
+        rows = self.main._fetch_recent_alerts(10)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["alert_id"], "DB-1")
+        self.assertEqual(rows[0]["txId"], 101)
+
+    def test_store_recent_alert_upserts_same_alert_id(self):
+        self.main._store_recent_alert({"alert_id": "DB-2", "severity": "high", "received_at": "2026-06-24T12:00:00+00:00"})
+        self.main._store_recent_alert({"alert_id": "DB-2", "severity": "critical", "received_at": "2026-06-24T12:05:00+00:00"})
+
+        rows = self.main._fetch_recent_alerts(10)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["alert_id"], "DB-2")
+        self.assertEqual(rows[0]["severity"], "critical")
+
+    def test_recent_alerts_endpoint_reads_from_persistent_store(self):
+        self.main._store_recent_alert({"alert_id": "DB-3", "received_at": "2026-06-24T12:00:00+00:00"})
+        self.main.recent_alerts.clear()
+
+        from fastapi.testclient import TestClient
+        with TestClient(self.main.app, raise_server_exceptions=False) as client:
+            response = client.get("/alerts/recent?limit=5")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["alert_id"], "DB-3")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${ROOT_DIR}/.local-state"
 STATE_FILE="${STATE_DIR}/minikube-release.env"
+source "${ROOT_DIR}/scripts/deploy_common.sh"
+source "${ROOT_DIR}/scripts/minikube_release_common.sh"
 
 TAG_PREFIX="${TAG_PREFIX:-local}"
 IMAGE_TAG="${IMAGE_TAG:-}"
@@ -40,20 +42,19 @@ Environment:
 EOF
 }
 
-generate_tag() {
-  printf "%s-%s" "${TAG_PREFIX}" "$(date +%Y%m%d-%H%M%S)"
+record_release_state() {
+  write_env_state_file "${STATE_FILE}" \
+    "IMAGE_TAG=${IMAGE_TAG}" \
+    "MINIKUBE_PROFILE=${MINIKUBE_PROFILE}" \
+    "EXPECTED_CONTEXT=${EXPECTED_CONTEXT}" \
+    "RELEASE_NAME=${RELEASE_NAME}" \
+    "NAMESPACE=${NAMESPACE}" \
+    "RELEASED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 
-record_release_state() {
-  mkdir -p "${STATE_DIR}"
-  cat >"${STATE_FILE}" <<EOF
-IMAGE_TAG=${IMAGE_TAG}
-MINIKUBE_PROFILE=${MINIKUBE_PROFILE}
-EXPECTED_CONTEXT=${EXPECTED_CONTEXT}
-RELEASE_NAME=${RELEASE_NAME}
-NAMESPACE=${NAMESPACE}
-RELEASED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
+print_release_state() {
+  echo "Recorded release state:"
+  print_env_state_file "${STATE_FILE}" "No release state found."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -99,13 +100,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${IMAGE_TAG}" ]]; then
-  IMAGE_TAG="$(generate_tag)"
+  IMAGE_TAG="$(generate_local_release_tag "${TAG_PREFIX}")"
 fi
 
 if [[ "${PRINT_ONLY}" == "true" ]]; then
   echo "${IMAGE_TAG}"
   exit 0
 fi
+
+require_cmd bash
 
 cd "${ROOT_DIR}"
 
@@ -128,4 +131,4 @@ record_release_state
 
 echo
 echo "Local minikube release recorded at ${STATE_FILE}"
-echo "Image tag: ${IMAGE_TAG}"
+print_release_state

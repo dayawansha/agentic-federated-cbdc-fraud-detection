@@ -1,9 +1,32 @@
+"""
+================================================================================
+POLICY MANAGER - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of the Policy Manager as the "Compliance Officer" and "Gatekeeper" of the system.
+It enforces rules of cooperation and protects privacy budgets across all banks.
+
+Its main responsibilities include:
+1. PRIVACY BUDGET GATING: Every time a bank node participates in a training round,
+   it leaks a minute amount of mathematical privacy. We represent this leakage allowance
+   with "Epsilon" (strength of privacy) and "Delta" (probability of information leak).
+   The Policy Manager records this usage like a debit card. If a bank's privacy card
+   has insufficient funds, they are barred from participating to prevent any data leak.
+2. GOVERNANCE AND ELIGIBILITY: It keeps a registry of which bank nodes are allowed to
+   participate in federated rounds and what global thresholds (e.g., minimum local
+   accuracy, maximum local loss) they must satisfy.
+3. CRYPTOGRAPHIC KEY ESCROW: In secure aggregation, models are masked with private keys.
+   The Policy Manager acts as an escrow agent, storing encrypted shares of these masks
+   so they can be reconstructed collectively during aggregation without exposing
+   any single bank's raw model weights to the central coordinator.
+================================================================================
+"""
 import logging
 import os
 import sys
 import base64
 import hashlib
 import io
+import json
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -11,6 +34,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 # Ensure `/app` is on the import path inside the container so `shared` can be imported.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -43,7 +69,7 @@ DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
     "min_agents_per_round": 1,
     "max_rounds": 50,
     "aggregation_strategy": "FedAvg",
-    "fallback_aggregation_strategy": "WeightedFedAvg",
+    "fallback_aggregation_strategy": "AdaptiveFedAvg",
     "low_performance_accuracy": 0.8,
     "min_update_sample_size": 1,
     "min_update_accuracy": 0.5,
@@ -57,7 +83,8 @@ DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
     "require_encrypted_updates": True,
     "minimum_agent_reliability_score": 0.25,
     "adaptive_rejected_update_ratio": 0.25,
-    "adaptive_strategy_on_rejection": "WeightedFedAvg",
+    "adaptive_strategy_on_rejection": "PerformanceWeightedFedAvg",
+    "fedprox_mu": 1.0,
 }
 
 class AgentBudget(Base):
@@ -152,6 +179,7 @@ class SecureAggregationMaskAggregateItem(BaseModel):
     agent_id: str
     sample_size: int
     reliability_score: float = 1.0
+    metrics: Dict[str, float] = {}
 
 class SecureAggregationMaskAggregateRequest(BaseModel):
     round_id: str
@@ -161,6 +189,11 @@ class SecureAggregationMaskAggregateRequest(BaseModel):
 class SecureAggregationMaskAggregateResponse(BaseModel):
     aggregate_mask: str
     participant_count: int
+
+
+class SecureAggregationEscrowPublicKeyResponse(BaseModel):
+    scheme: str
+    public_key: str
 
 def _resolve_transport_cipher() -> Fernet:
     explicit_key = os.getenv("PRIVACY_FERNET_KEY")
@@ -173,9 +206,34 @@ def _resolve_transport_cipher() -> Fernet:
 
 TRANSPORT_CIPHER = _resolve_transport_cipher()
 
+
+def _resolve_escrow_private_key() -> x25519.X25519PrivateKey:
+    explicit_key = os.getenv("SECURE_AGGREGATION_ESCROW_PRIVATE_KEY_B64")
+    if explicit_key:
+        return x25519.X25519PrivateKey.from_private_bytes(base64.b64decode(explicit_key))
+
+    seed = os.getenv("SECURE_AGGREGATION_ESCROW_SEED", "development-only-secure-aggregation-escrow")
+    derived_private_bytes = hashlib.sha256(seed.encode("utf-8")).digest()
+    return x25519.X25519PrivateKey.from_private_bytes(derived_private_bytes)
+
+
+ESCROW_PRIVATE_KEY = _resolve_escrow_private_key()
+ESCROW_PUBLIC_KEY = ESCROW_PRIVATE_KEY.public_key().public_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PublicFormat.Raw,
+)
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/secure-aggregation/escrow/public-key", response_model=SecureAggregationEscrowPublicKeyResponse)
+async def get_secure_aggregation_escrow_public_key():
+    return SecureAggregationEscrowPublicKeyResponse(
+        scheme="x25519-hkdf-fernet-v1",
+        public_key=base64.b64encode(ESCROW_PUBLIC_KEY).decode("ascii"),
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -245,7 +303,32 @@ def _aggregation_weight(item: SecureAggregationMaskAggregateItem, strategy: str)
     base_weight = float(max(0, int(item.sample_size)))
     if strategy == "WeightedFedAvg":
         return base_weight * max(0.1, float(item.reliability_score))
+    if strategy == "PerformanceWeightedFedAvg":
+        return base_weight * _metric_quality_score(item.metrics or {})
+    if strategy == "AdaptiveFedAvg":
+        return base_weight * max(0.1, float(item.reliability_score)) * _metric_quality_score(item.metrics or {})
     return base_weight
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, float(value)))
+
+
+def _metric_quality_score(metrics: Dict[str, float]) -> float:
+    if not metrics:
+        return 1.0
+
+    components: List[float] = []
+    for key in ("accuracy", "f1_score", "precision", "recall", "roc_auc", "auc"):
+        if key in metrics:
+            components.append(_clamp(float(metrics[key]), 0.0, 1.0))
+
+    if "loss" in metrics:
+        components.append(1.0 / (1.0 + max(0.0, float(metrics["loss"]))))
+
+    if not components:
+        return 1.0
+    return max(0.1, sum(components) / len(components))
 
 def _aggregate_mask_payloads(mask_payloads: List[bytes], aggregation_weights: List[float]) -> bytes:
     if not mask_payloads:
@@ -267,6 +350,46 @@ def _aggregate_mask_payloads(mask_payloads: List[bytes], aggregation_weights: Li
     buffer = io.BytesIO()
     torch.save(aggregate_state, buffer)
     return buffer.getvalue()
+
+
+def _decrypt_escrowed_mask_share(mask_share: str) -> bytes:
+    try:
+        package = json.loads(mask_share)
+    except Exception:
+        package = None
+
+    if isinstance(package, dict) and package.get("scheme") == "x25519-hkdf-fernet-v1":
+        round_id = str(package.get("round_id", ""))
+        agent_id = str(package.get("agent_id", ""))
+        ephemeral_public_key_b64 = str(package.get("ephemeral_public_key", ""))
+        ciphertext_b64 = str(package.get("ciphertext", ""))
+        mask_commitment = str(package.get("mask_commitment", ""))
+        if not round_id or not agent_id or not ephemeral_public_key_b64 or not ciphertext_b64:
+            raise HTTPException(status_code=400, detail="Incomplete secure aggregation escrow package")
+
+        try:
+            ephemeral_public_key = x25519.X25519PublicKey.from_public_bytes(base64.b64decode(ephemeral_public_key_b64))
+            shared_secret = ESCROW_PRIVATE_KEY.exchange(ephemeral_public_key)
+            derived_key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=None,
+                info=f"secure-aggregation:{round_id}:{agent_id}".encode("utf-8"),
+            ).derive(shared_secret)
+            cipher = Fernet(base64.urlsafe_b64encode(derived_key))
+            mask_payload = cipher.decrypt(base64.b64decode(ciphertext_b64))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid secure aggregation escrow package for {agent_id}") from exc
+
+        if mask_commitment and hashlib.sha256(mask_payload).hexdigest() != mask_commitment:
+            raise HTTPException(status_code=400, detail=f"Secure aggregation escrow commitment mismatch for {agent_id}")
+        return mask_payload
+
+    try:
+        encrypted_mask = base64.b64decode(mask_share)
+        return TRANSPORT_CIPHER.decrypt(encrypted_mask)
+    except InvalidToken as exc:
+        raise HTTPException(status_code=400, detail="Invalid legacy secure aggregation mask payload") from exc
 
 @app.get("/policies/budget/{agent_id:path}", response_model=PrivacyBudget)
 async def get_agent_budget(agent_id: str):
@@ -516,10 +639,11 @@ async def aggregate_secure_aggregation_masks(request: SecureAggregationMaskAggre
         for item in request.updates:
             row = row_map[item.agent_id]
             try:
-                encrypted_mask = base64.b64decode(row.encrypted_mask_share)
-                mask_payload = TRANSPORT_CIPHER.decrypt(encrypted_mask)
-            except InvalidToken as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid secure aggregation mask for {item.agent_id}") from exc
+                mask_payload = _decrypt_escrowed_mask_share(row.encrypted_mask_share)
+            except HTTPException as exc:
+                if "for " not in str(exc.detail):
+                    raise HTTPException(status_code=exc.status_code, detail=f"{exc.detail} for {item.agent_id}") from exc
+                raise
             mask_payloads.append(mask_payload)
             aggregation_weights.append(_aggregation_weight(item, request.strategy))
 

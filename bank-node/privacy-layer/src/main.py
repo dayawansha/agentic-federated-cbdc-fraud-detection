@@ -1,9 +1,34 @@
+"""
+================================================================================
+PRIVACY LAYER SERVICE - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of the Privacy Layer as the bank's "Cryptographic Security Guard" or "Armor Generator."
+Its entire purpose is to ensure that the coordinator and other banks can never see
+any individual bank's raw model weights or reverse-engineer private customer data.
+
+It provides three main lines of defense:
+1. DIFFERENTIAL PRIVACY (DP): Before sharing model weights, this service injects a calculated
+   amount of random mathematical noise (static). Think of this like pixelating a photo: 
+   the overall shape (the general fraud patterns) is still visible and useful, but the individual 
+   pixels (the specific customer identities or amounts) are completely camouflaged.
+2. SECURE AGGREGATION MASKING: Imagine multiple people want to calculate their average salary
+   without revealing their exact salaries to anyone. Each person adds a secret random number (mask)
+   to their salary. The masks are generated such that when all masked salaries are added up,
+   they sum to zero and cancel each other out, leaving only the clean average.
+   This service generates these masks using asymmetric key agreements (X25519, HKDF) and applies
+   them to model weights.
+3. DATA ENCRYPTION: It provides traditional encryption/decryption (using Fernet) for transit
+   protection, ensuring only authorized services can read the payloads.
+================================================================================
+"""
 import io
 import logging
 import base64
 import hashlib
+import os
 
 from fastapi import FastAPI, HTTPException
+import httpx
 from pydantic import BaseModel
 
 from src.privacy_engine import privacy_module
@@ -12,6 +37,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Privacy Layer Service")
+POLICY_MANAGER_URL = os.getenv("POLICY_MANAGER_URL", "http://localhost:8003")
 
 class DPRequest(BaseModel):
     weights: str
@@ -33,6 +59,8 @@ class DecryptResponse(BaseModel):
     data: str
 
 class SecureAggregationPrepareRequest(BaseModel):
+    round_id: str
+    agent_id: str
     weights: str
 
 class SecureAggregationPrepareResponse(BaseModel):
@@ -86,6 +114,17 @@ def _derive_leakage_risk(leakage_proxy_score: float) -> str:
     if leakage_proxy_score >= 0.6:
         return "medium"
     return "low"
+
+
+async def _fetch_escrow_public_key() -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{POLICY_MANAGER_URL}/secure-aggregation/escrow/public-key", timeout=30.0)
+        response.raise_for_status()
+        payload = response.json()
+        key = str(payload.get("public_key", ""))
+        if not key:
+            raise HTTPException(status_code=502, detail="Policy Manager did not provide an escrow public key")
+        return key
 
 @app.get("/health")
 async def health_check():
@@ -143,11 +182,20 @@ async def prepare_secure_update(request: SecureAggregationPrepareRequest) -> Sec
 
         buffer = io.BytesIO(base64.b64decode(request.weights))
         weights_dict = torch.load(buffer)
-        masked_weights, encrypted_mask_share = privacy_module.build_secure_aggregation_artifacts(weights_dict)
+        escrow_public_key = await _fetch_escrow_public_key()
+        masked_weights, encrypted_mask_share = privacy_module.build_escrowed_secure_aggregation_artifacts(
+            weights_dict=weights_dict,
+            round_id=request.round_id,
+            agent_id=request.agent_id,
+            escrow_public_key_b64=escrow_public_key,
+        )
         return SecureAggregationPrepareResponse(
             masked_weights=base64.b64encode(masked_weights).decode("ascii"),
-            encrypted_mask_share=base64.b64encode(encrypted_mask_share).decode("ascii"),
+            encrypted_mask_share=encrypted_mask_share,
         )
+    except httpx.HTTPError as exc:
+        logger.error("Failed to fetch secure aggregation escrow key: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch secure aggregation escrow key") from exc
     except Exception as e:
         logger.error(f"Error preparing secure aggregation payload: {e}")
         raise HTTPException(status_code=500, detail=str(e))

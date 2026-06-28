@@ -60,7 +60,7 @@ The dashboard now proxies its own upstream API and WebSocket requests, so you do
 To populate the dashboard with repeatable demo graph and alert data after deployment:
 
 ```bash
-bash scripts/bootstrap_dashboard_demo_data.sh
+bash scripts/demo_dashboard_lifecycle.sh seed
 ```
 
 This helper script:

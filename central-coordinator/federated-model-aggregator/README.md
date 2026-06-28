@@ -1,6 +1,6 @@
 # Federated Model Aggregator
 
-Federated model parameters aggregation (FedAvg, WeightedFedAvg), secure decryption, and global metric synthesis.
+Federated model parameters aggregation (`FedAvg`, `WeightedFedAvg`, `PerformanceWeightedFedAvg`, `AdaptiveFedAvg`, `FedProxGNN`, `FedGraph`, `RobustMedian`), secure decryption, and global metric synthesis.
 
 ## Port
 - **`8002`** (REST API)
@@ -10,7 +10,14 @@ The `federated-model-aggregator` is the **merging engine (math brain)** of the s
 
 1. **Merging Model Weights (Federated Averaging)**
    - **What it does:** Combines individual AI models from various banks into one master model.
-   - **How it works:** It uses algorithms like standard `FedAvg` or `WeightedFedAvg`. In `WeightedFedAvg`, it gives more weight/importance to updates from banks that trained on larger datasets or have a higher reliability score.
+   - **How it works:** It supports multiple strategies:
+     - `FedAvg`: sample-size weighted averaging.
+     - `WeightedFedAvg`: sample size plus agent reliability weighting.
+     - `PerformanceWeightedFedAvg`: weights strong local models more heavily using their reported metrics.
+     - `AdaptiveFedAvg`: blends sample size, reliability, and model quality.
+     - `FedProxGNN`: coordinator-side proximal weighting that down-weights updates that drift too far from the current global reference model.
+     - `FedGraph`: graph-aware weighting that rewards updates trained on stronger local graph coverage and graph quality signals.
+     - `RobustMedian`: coordinate-wise median aggregation that is more resilient to outlier updates.
 
 2. **Secure Decryption & Tamper Checking**
    - **What it does:** Unlocks the incoming model weights securely and checks that they were not altered during transmission.
@@ -33,7 +40,7 @@ The `federated-model-aggregator` is the **merging engine (math brain)** of the s
 
 ### 2. Aggregation Logic
 - `POST /aggregate`: Performs aggregation on a batch of updates.
-  - **Request Body**: Takes `round_id`, a list of `updates` containing base64 serialized/encrypted weights and metadata, the chosen `strategy` (e.g. `FedAvg` or `WeightedFedAvg`), and `noise_multiplier`.
+  - **Request Body**: Takes `round_id`, a list of `updates` containing base64 serialized/encrypted weights and metadata, the chosen `strategy`, optional `global_reference_weights` for `FedProxGNN`, and `noise_multiplier`.
   - **Response**: Returns the base64-encoded serialized PyTorch global model weights along with the synthesized global evaluation metrics.
 
 ---
@@ -44,6 +51,7 @@ The `federated-model-aggregator` is the **merging engine (math brain)** of the s
 |----------|-------------|---------|
 | `PRIVACY_FERNET_KEY` | Raw base64-encoded Fernet key (optional) | None |
 | `PRIVACY_KEY_SEED`   | Seed string used to derive the AES key if no key is explicitly set | `"development-only-shared-key"` |
+| `FEDPROX_MU` | Strength of the coordinator-side proximal penalty used by `FedProxGNN` | `1.0` |
 
 ---
 

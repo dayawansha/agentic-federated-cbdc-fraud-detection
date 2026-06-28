@@ -1,9 +1,33 @@
+"""
+================================================================================
+PRIVACY MODULE ENGINE - BUSINESS LOGIC & EXPLANATION
+================================================================================
+Think of this module as the "cryptographic engine room." It handles the mathematics
+of creating secret keys, generating masks, and applying encryption.
+
+It implements three core cryptographic tools:
+1. X25519 KEY EXCHANGE (Diffie-Hellman): Allows two bank nodes to create a shared secret
+   key over a public channel. They exchange their public keys, combine them with their
+   private keys, and mathematically arrive at the exact same shared secret key without
+   ever transmitting that key over the wire.
+2. HKDF KEY DERIVATION: Takes the raw shared secret from X25519 and stretches it into
+   a high-quality, uniform encryption key.
+3. SECURE AGGREGATION MASK GENERATION: Uses the derived keys to encrypt/generate pseudo-random
+   noise vectors (masks) that are added to model weights. The masks from all bank nodes
+   sum to zero, guaranteeing that the coordinator gets a correct global sum but learns
+   absolutely nothing about any single bank's private input.
+================================================================================
+"""
 import logging
 import base64
 import hashlib
 import os
 import io
+import json
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from typing import Any
 
 logging.basicConfig(level=logging.INFO)
@@ -86,6 +110,71 @@ class PrivacyModule:
         torch.save(mask_state, mask_buffer)
         encrypted_mask = self.encrypt_model(mask_buffer.getvalue())
         return masked_buffer.getvalue(), encrypted_mask
+
+    @staticmethod
+    def _derive_escrow_cipher(
+        escrow_public_key_b64: str,
+        round_id: str,
+        agent_id: str,
+    ) -> tuple[Fernet, str]:
+        escrow_public_key = x25519.X25519PublicKey.from_public_bytes(base64.b64decode(escrow_public_key_b64))
+        ephemeral_private_key = x25519.X25519PrivateKey.generate()
+        shared_secret = ephemeral_private_key.exchange(escrow_public_key)
+        derived_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=f"secure-aggregation:{round_id}:{agent_id}".encode("utf-8"),
+        ).derive(shared_secret)
+        cipher = Fernet(base64.urlsafe_b64encode(derived_key))
+        ephemeral_public_key = ephemeral_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return cipher, base64.b64encode(ephemeral_public_key).decode("ascii")
+
+    def build_escrowed_secure_aggregation_artifacts(
+        self,
+        weights_dict: dict,
+        round_id: str,
+        agent_id: str,
+        escrow_public_key_b64: str,
+    ) -> tuple[bytes, str]:
+        """
+        Creates additive masks as before, but wraps the mask payload in a per-round
+        escrow package using ephemeral X25519 + HKDF rather than a shared transport key.
+        """
+        import torch
+
+        mask_state = {}
+        masked_state = {}
+        for key, val in weights_dict.items():
+            if val.is_floating_point():
+                mask = torch.randn_like(val)
+                mask_state[key] = mask
+                masked_state[key] = val + mask
+            else:
+                mask_state[key] = torch.zeros_like(val)
+                masked_state[key] = val
+
+        masked_buffer = io.BytesIO()
+        torch.save(masked_state, masked_buffer)
+
+        mask_buffer = io.BytesIO()
+        torch.save(mask_state, mask_buffer)
+        mask_bytes = mask_buffer.getvalue()
+
+        cipher, ephemeral_public_key_b64 = self._derive_escrow_cipher(escrow_public_key_b64, round_id, agent_id)
+        ciphertext = cipher.encrypt(mask_bytes)
+        package = {
+            "scheme": "x25519-hkdf-fernet-v1",
+            "round_id": round_id,
+            "agent_id": agent_id,
+            "ephemeral_public_key": ephemeral_public_key_b64,
+            "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+            "mask_commitment": hashlib.sha256(mask_bytes).hexdigest(),
+        }
+        return masked_buffer.getvalue(), json.dumps(package, separators=(",", ":"))
 
     def clip_per_sample_gradients(self, grad_samples: list, max_grad_norm: float = 1.0) -> list:
         """

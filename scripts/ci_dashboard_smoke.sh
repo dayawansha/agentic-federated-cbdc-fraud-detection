@@ -3,6 +3,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT_DIR}/scripts/deploy_common.sh"
+
 IMAGE_TAG="${IMAGE_TAG:-ci-smoke}"
 MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
 EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-minikube}"
@@ -18,19 +20,6 @@ EXPECTED_ALERT_COUNT="${EXPECTED_ALERT_COUNT:-5}"
 START_MINIKUBE_IF_NEEDED=true
 SKIP_BUILD=false
 SKIP_DEPLOY=false
-
-APP_DEPLOYMENTS=(
-  "agentic-coordinator"
-  "federated-model-aggregator"
-  "policy-manager"
-  "model-registry"
-  "local-agent"
-  "local-gnn"
-  "privacy-layer"
-  "transaction-graph"
-  "alerting"
-  "fraud-dashboard"
-)
 
 usage() {
   cat <<EOF
@@ -61,13 +50,6 @@ Environment:
   EXPECTED_ACCOUNTS_COUNT    Default: 10
   EXPECTED_ALERT_COUNT       Default: 5
 EOF
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Missing required command: $1" >&2
-    exit 1
-  fi
 }
 
 dump_failure_context() {
@@ -116,6 +98,8 @@ ensure_context() {
   if [[ "${current_context}" != "${EXPECTED_CONTEXT}" ]]; then
     kubectl config use-context "${EXPECTED_CONTEXT}"
   fi
+  ensure_expected_context "${EXPECTED_CONTEXT}" \
+    "Set EXPECTED_CONTEXT to override this smoke-test guard if you intentionally want another local cluster."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -161,6 +145,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 trap on_exit EXIT
+
+mapfile -t APP_DEPLOYMENTS < <(project_app_deployments)
 
 require_cmd docker
 require_cmd kubectl

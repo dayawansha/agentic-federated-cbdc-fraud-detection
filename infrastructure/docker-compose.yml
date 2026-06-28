@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- Infrastructure ---
   
@@ -22,6 +20,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
 
   postgres:
     image: postgres:15
@@ -41,26 +41,230 @@ services:
     ports:
       - "6379:6379"
 
-  # --- Coordinator Domain (Example placeholders) ---
+  redis-insight:
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - redis_insight_data:/data
 
-  # agentic-coordinator:
-  #   build: ../coordinator/agentic-coordinator
-  #   ports:
-  #     - "8001:8001"
-  #   depends_on:
-  #     - kafka
-  #     - redis
-  #     - postgres
+  neo4j:
+    image: neo4j:5
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/password
+    volumes:
+      - neo4j_data:/data
 
-  # --- Bank Node Domain (Example placeholders) ---
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "18080:8080"
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      KAFKA_CLUSTERS_0_NAME: federated-fraud-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      SERVER_SERVLET_CONTEXT_PATH: /kafka-ui
 
-  # transaction-graph:
-  #   build: ../bank-node/transaction-graph
-  #   ports:
-  #     - "9004:9004"
-  #   depends_on:
-  #     - neo4j
-  #     - kafka
+  kafka-topic-init:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - kafka
+    restart: "no"
+    entrypoint:
+      - /bin/bash
+      - -lc
+      - |
+        for attempt in {1..30}; do
+          kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1 && break
+          echo "Waiting for Kafka broker..."
+          sleep 2
+        done
+        kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1 && \
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions.events --partitions 1 --replication-factor 1 && \
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic fraud.alerts --partitions 1 --replication-factor 1
+
+  # --- Coordinator Domain ---
+
+  agentic-coordinator:
+    build:
+      context: ..
+      dockerfile: central-coordinator/agentic-coordinator/Dockerfile
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - kafka
+      - postgres
+      - federated-model-aggregator
+      - policy-manager
+      - model-registry
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      FEDERATED_MODEL_AGGREGATOR_URL: http://federated-model-aggregator:8002
+      POLICY_MANAGER_URL: http://policy-manager:8003
+      MODEL_REGISTRY_URL: http://model-registry:8004
+      LOCAL_AGENT_URLS: http://local-agent:9001
+
+  federated-model-aggregator:
+    build:
+      context: ..
+      dockerfile: central-coordinator/federated-model-aggregator/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      PRIVACY_KEY_SEED: development-only-shared-key
+
+  policy-manager:
+    build:
+      context: ..
+      dockerfile: central-coordinator/policy-manager/Dockerfile
+    ports:
+      - "8003:8003"
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: federated_fraud_db
+      PRIVACY_KEY_SEED: development-only-shared-key
+      SECURE_AGGREGATION_ESCROW_SEED: development-only-secure-aggregation-escrow
+
+  model-registry:
+    build:
+      context: ..
+      dockerfile: central-coordinator/model-registry/Dockerfile
+    ports:
+      - "8004:8004"
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: federated_fraud_db
+      ARTIFACT_DIR: /app/artifacts
+    volumes:
+      - ../central-coordinator/model-registry/artifacts:/app/artifacts
+
+  # --- Bank Node Domain ---
+
+  transaction-graph:
+    build:
+      context: ..
+      dockerfile: bank-node/transaction-graph/Dockerfile
+    ports:
+      - "9004:9004"
+    depends_on:
+      - neo4j
+      - kafka
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TRANSACTION_TOPIC: transactions.events
+
+  local-gnn:
+    build:
+      context: ..
+      dockerfile: bank-node/local-gnn-model/Dockerfile
+    ports:
+      - "9002:9002"
+    depends_on:
+      - transaction-graph
+    environment:
+      TRANSACTION_GRAPH_URL: http://transaction-graph:9004
+
+  privacy-layer:
+    build:
+      context: ..
+      dockerfile: bank-node/privacy-layer/Dockerfile
+    ports:
+      - "9003:9003"
+    depends_on:
+      - policy-manager
+    environment:
+      POLICY_MANAGER_URL: http://policy-manager:8003
+      PRIVACY_KEY_SEED: development-only-shared-key
+
+  local-agent:
+    build:
+      context: ..
+      dockerfile: bank-node/local-agent/Dockerfile
+    ports:
+      - "9001:9001"
+    depends_on:
+      - kafka
+      - agentic-coordinator
+      - policy-manager
+      - model-registry
+      - local-gnn
+      - privacy-layer
+    environment:
+      AGENT_ID: bank-node-1
+      LOCAL_GNN_URL: http://local-gnn:9002
+      PRIVACY_LAYER_URL: http://privacy-layer:9003
+      COORDINATOR_URL: http://agentic-coordinator:8001
+      MODEL_REGISTRY_URL: http://model-registry:8004
+      POLICY_MANAGER_URL: http://policy-manager:8003
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_FRAUD_ALERTS_TOPIC: fraud.alerts
+      REQUIRE_POLICY_MANAGER_FOR_PARTICIPATION: "true"
+
+  alerting:
+    build:
+      context: ..
+      dockerfile: bank-node/alerting/Dockerfile
+    ports:
+      - "9005:9005"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TRANSACTION_EVENTS_TOPIC: transactions.events
+      KAFKA_FRAUD_ALERTS_TOPIC: fraud.alerts
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: federated_fraud_db
+
+  fraud-dashboard:
+    build:
+      context: ..
+      dockerfile: bank-node/fraud-dashboard/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - kafka-ui
+      - redis-insight
+      - model-registry
+      - local-agent
+      - local-gnn
+      - privacy-layer
+      - transaction-graph
+      - alerting
 
 volumes:
   postgres_data:
+  kafka_data:
+  neo4j_data:
+  redis_insight_data:

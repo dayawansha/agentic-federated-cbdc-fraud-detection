@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART_DIR="${ROOT_DIR}/infrastructure/helm/federated-fraud-detection"
+source "${ROOT_DIR}/scripts/deploy_common.sh"
 
 RELEASE_NAME="${RELEASE_NAME:-federated-fraud}"
 NAMESPACE="${NAMESPACE:-default}"
@@ -12,19 +13,6 @@ MINIKUBE_PROFILE="${MINIKUBE_PROFILE:-minikube}"
 EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-minikube}"
 SKIP_LOAD=false
 SKIP_HELM=false
-
-APP_DEPLOYMENTS=(
-  "agentic-coordinator"
-  "federated-model-aggregator"
-  "policy-manager"
-  "model-registry"
-  "local-agent"
-  "local-gnn"
-  "privacy-layer"
-  "transaction-graph"
-  "alerting"
-  "fraud-dashboard"
-)
 
 usage() {
   cat <<EOF
@@ -46,44 +34,10 @@ Environment:
 EOF
 }
 
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Missing required command: $1" >&2
-    exit 1
-  fi
-}
-
-check_context() {
-  local current_context
-  current_context="$(kubectl config current-context)"
-  if [[ "${current_context}" != "${EXPECTED_CONTEXT}" ]]; then
-    echo "Current kubectl context is '${current_context}', expected '${EXPECTED_CONTEXT}'." >&2
-    echo "Run 'kubectl config use-context ${EXPECTED_CONTEXT}' or override EXPECTED_CONTEXT intentionally." >&2
-    exit 1
-  fi
-}
-
 check_minikube() {
   if ! minikube -p "${MINIKUBE_PROFILE}" status >/dev/null 2>&1; then
     echo "Minikube profile '${MINIKUBE_PROFILE}' is not running." >&2
     echo "Start it first, for example: minikube start -p ${MINIKUBE_PROFILE}" >&2
-    exit 1
-  fi
-}
-
-check_images() {
-  local missing=0
-  local image
-
-  for image in "${IMAGES[@]}"; do
-    if ! docker image inspect "${image}" >/dev/null 2>&1; then
-      echo "Missing local image: ${image}" >&2
-      missing=1
-    fi
-  done
-
-  if [[ "${missing}" -ne 0 ]]; then
-    echo "Build the missing images first, for example with scripts/build_all_images.sh." >&2
     exit 1
   fi
 }
@@ -93,14 +47,6 @@ load_images() {
   for image in "${IMAGES[@]}"; do
     echo "Loading ${image} into minikube profile ${MINIKUBE_PROFILE}..."
     minikube -p "${MINIKUBE_PROFILE}" image load "${image}"
-  done
-}
-
-rollout_apps() {
-  local deployment
-  for deployment in "${APP_DEPLOYMENTS[@]}"; do
-    echo "Waiting for deployment/${deployment}..."
-    kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout=180s
   done
 }
 
@@ -142,18 +88,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-IMAGES=(
-  "dusman/federated-fraud-agentic-coordinator:${IMAGE_TAG}"
-  "dusman/federated-fraud-federated-model-aggregator:${IMAGE_TAG}"
-  "dusman/federated-fraud-policy-manager:${IMAGE_TAG}"
-  "dusman/federated-fraud-model-registry:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-agent:${IMAGE_TAG}"
-  "dusman/federated-fraud-local-gnn:${IMAGE_TAG}"
-  "dusman/federated-fraud-privacy-layer:${IMAGE_TAG}"
-  "dusman/federated-fraud-transaction-graph:${IMAGE_TAG}"
-  "dusman/federated-fraud-alerting:${IMAGE_TAG}"
-  "dusman/federated-fraud-fraud-dashboard:${IMAGE_TAG}"
-)
+mapfile -t APP_DEPLOYMENTS < <(project_app_deployments)
+mapfile -t IMAGES < <(project_tagged_images "${IMAGE_TAG}")
 
 require_cmd docker
 require_cmd kubectl
@@ -189,9 +125,10 @@ else
   fi
 fi
 
-check_context
+ensure_expected_context "${EXPECTED_CONTEXT}" \
+  "Run 'kubectl config use-context ${EXPECTED_CONTEXT}' or override EXPECTED_CONTEXT intentionally."
 check_minikube
-check_images
+verify_local_images "Build the missing images first, for example with scripts/build_all_images.sh." "${IMAGES[@]}"
 
 if [[ "${IMAGE_TAG}" == "latest" ]]; then
   echo "Warning: deploying tag 'latest' can leave minikube on stale cached app images." >&2
@@ -203,10 +140,9 @@ if [[ "${SKIP_LOAD}" != "true" ]]; then
 fi
 
 if [[ "${SKIP_HELM}" == "true" ]]; then
-  echo
-  echo "Minikube images are ready for tag ${IMAGE_TAG}."
-  echo "Run Helm separately with:"
-  echo "  helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} --namespace ${NAMESPACE} --create-namespace --set-string global.image.tag=${IMAGE_TAG}"
+  print_helm_followup \
+    "Minikube images are ready for tag ${IMAGE_TAG}." \
+    "helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} --namespace ${NAMESPACE} --create-namespace --set-string global.image.tag=${IMAGE_TAG}"
   exit 0
 fi
 
@@ -216,10 +152,11 @@ helm upgrade --install "${RELEASE_NAME}" "${CHART_DIR}" \
   --create-namespace \
   --set-string global.image.tag="${IMAGE_TAG}"
 
-rollout_apps
+rollout_deployments "${NAMESPACE}" "180s" "${APP_DEPLOYMENTS[@]}"
 
-echo
-echo "Minikube deployment is ready."
-echo "Profile: ${MINIKUBE_PROFILE}"
-echo "Image tag: ${IMAGE_TAG}"
-kubectl get pods -n "${NAMESPACE}" -o wide
+print_deployment_summary \
+  "Minikube deployment is ready." \
+  "Profile" \
+  "${MINIKUBE_PROFILE}" \
+  "${IMAGE_TAG}" \
+  "${NAMESPACE}"
