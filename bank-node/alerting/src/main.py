@@ -61,6 +61,12 @@ alert_producer = None
 
 
 class AlertRecord(Base):
+    """
+    BUSINESS REASON: This class represents a single persistent fraud alert ticket.
+    Whenever the GNN model flags a transaction, or a streaming transaction violates a rule,
+    the alert is structured using this class and stored in PostgreSQL. This allows audit logs
+    and human operators to search and review historical warnings.
+    """
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -347,6 +353,10 @@ event_loop: asyncio.AbstractEventLoop | None = None
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: Checked by system orchestrators to ensure that the alerting
+    microservice is active and healthy.
+    """
     return {"status": "healthy"}
 
 def _store_recent_alert(payload: Dict[str, Any]):
@@ -435,18 +445,30 @@ def consume_fraud_events(loop: asyncio.AbstractEventLoop):
 
 @app.get("/alerts/recent")
 async def get_recent_alerts(limit: int = 50):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the front-end dashboard to list the latest
+    unresolved or recent fraud alerts in the bank node, sorting them by timestamp.
+    """
     limit = max(1, min(int(limit), recent_alerts_max))
     return _fetch_recent_alerts(limit)
 
 
 @app.get("/alerts/summary")
 async def get_alert_summary(limit: int = 200):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the dashboard to draw charts and aggregate statistics
+    (e.g., alert counts by severity level and source), giving the compliance officer a quick threat overview.
+    """
     limit = max(1, min(int(limit), max(recent_alerts_max, 500)))
     return _summarize_alerts(limit)
 
 
 @app.get("/alerts/channels")
 async def get_alert_channels():
+    """
+    BUSINESS PURPOSE / REASON: This endpoint checks which outbound communication systems (such as Slack,
+    email, or webhooks) are active and ready to deliver real-time notifications to team members.
+    """
     channels = get_notification_channels()
     configured_count = sum(1 for channel in channels if channel.get("configured"))
     return {
@@ -456,6 +478,11 @@ async def get_alert_channels():
 
 @app.websocket("/ws/alerts")
 async def ws_alerts(websocket: WebSocket):
+    """
+    BUSINESS PURPOSE / REASON: Establishes a persistent full-duplex WebSocket connection with the
+    front-end dashboard. This allows the alerting service to instantly push new fraud warnings
+    to the operator's browser window without reloading.
+    """
     await websocket.accept()
     connected_clients.add(websocket)
     try:

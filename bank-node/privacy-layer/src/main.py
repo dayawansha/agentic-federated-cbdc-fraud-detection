@@ -39,48 +39,102 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Privacy Layer Service")
 POLICY_MANAGER_URL = os.getenv("POLICY_MANAGER_URL", "http://localhost:8003")
 
+# BUSINESS REASON: These schema classes define the structured contracts (request and response shapes)
+# used to communicate private models, noise levels, and cryptographic keys between bank nodes
+# and the privacy microservice. An ordinary person can think of them as standardized envelopes.
+
 class DPRequest(BaseModel):
+    """
+    BUSINESS REASON: Defines the parameters required to request Differential Privacy (DP) application.
+    - 'weights': The bank's GNN model learnings (in base64 format).
+    - 'noise_multiplier': The amount of mathematical camouflage (static noise) to add to the model weights.
+    """
     weights: str
     noise_multiplier: float = 0.01
 
 class DPResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the protected GNN model weights after DP noise has been added.
+    """
     weights: str
 
 class EncryptRequest(BaseModel):
+    """
+    BUSINESS REASON: Transports data that needs symmetric encryption to prevent unauthorized interception.
+    """
     data: str
 
 class EncryptResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the secure, encrypted binary data wrapped in base64 format.
+    """
     encrypted_data: str
 
 class DecryptRequest(BaseModel):
+    """
+    BUSINESS REASON: Transports encrypted data to be restored to its original readable format.
+    """
     encrypted_data: str
 
 class DecryptResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the decrypted, original readable model parameters or data.
+    """
     data: str
 
 class SecureAggregationPrepareRequest(BaseModel):
+    """
+    BUSINESS REASON: Collects everything needed to prepare a masked model update for a federated learning round.
+    - 'round_id': The identifier of the current collaborative training round.
+    - 'agent_id': The bank node performing this task.
+    - 'weights': The local model weights to be masked.
+    """
     round_id: str
     agent_id: str
     weights: str
 
 class SecureAggregationPrepareResponse(BaseModel):
+    """
+    BUSINESS REASON: Delivers the masked weights and the encrypted key share.
+    - 'masked_weights': The GNN weights with secret masks added, safe to send to the coordinator.
+    - 'encrypted_mask_share': The encrypted key share to send to the Policy Manager escrow.
+    """
     masked_weights: str
     encrypted_mask_share: str
 
 class ClipGradientsRequest(BaseModel):
+    """
+    BUSINESS REASON: Transports neural network update steps (gradients) for scaling checks.
+    - 'gradients': The raw training steps before clipping.
+    - 'max_grad_norm': The ceiling limit for updates, to prevent extreme changes.
+    """
     gradients: str
     max_grad_norm: float = 1.0
 
 class ClipGradientsResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the normalized update steps (gradients) after scaling down if they exceeded the limit.
+    """
     clipped_gradients: str
 
 class PrivacyEvaluationRequest(BaseModel):
+    """
+    BUSINESS REASON: Standardizes payload to run privacy audits.
+    - 'raw_weights': The model before noise was added.
+    - 'protected_weights': The model after noise was added.
+    - 'encrypted_data': The model after encryption.
+    """
     raw_weights: str
     protected_weights: str
     encrypted_data: str = ""
     noise_multiplier: float = 0.01
 
 class PrivacyEvaluationResponse(BaseModel):
+    """
+    BUSINESS REASON: Delivers the final audit report comparing raw and noise-added models.
+    It contains metrics like similarity, change ratio, and L2 distance to mathematically
+    verify that customer privacy is preserved.
+    """
     raw_payload_bytes: int
     protected_payload_bytes: int
     encrypted_payload_bytes: int
@@ -100,11 +154,18 @@ class PrivacyEvaluationResponse(BaseModel):
     noise_multiplier: float
 
 class PrivacySweepRequest(BaseModel):
+    """
+    BUSINESS REASON: Allows running multiple simulated privacy setups to find the perfect balance
+    between privacy (noise) and model utility (accuracy).
+    """
     raw_weights: str
     noise_multipliers: list[float]
     encrypt_payloads: bool = True
 
 class PrivacySweepResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the audit results for all simulated privacy setups.
+    """
     experiment_count: int
     results: list[PrivacyEvaluationResponse]
 
@@ -128,10 +189,21 @@ async def _fetch_escrow_public_key() -> str:
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent and Docker/Kubernetes
+    orchestrators to check if the privacy microservice is running and responsive. It acts
+    as a simple heartbeat check.
+    """
     return {"status": "healthy"}
 
 @app.post("/privacy/apply-dp")
 async def apply_dp(request: DPRequest) -> DPResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent after GNN training.
+    It applies Differential Privacy (DP) noise to the model weights. The business reason is to
+    mathematically prevent anyone (including the coordinator or hackers) from reverse-engineering
+    individual customer identities or transaction amounts from the shared model updates.
+    """
     try:
         try:
             import torch
@@ -157,6 +229,11 @@ async def apply_dp(request: DPRequest) -> DPResponse:
 
 @app.post("/privacy/encrypt")
 async def encrypt(request: EncryptRequest) -> EncryptResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent to symmetrically
+    encrypt the model weights before uploading them, providing a second layer of transport-level
+    security so only services with the shared secret key can decrypt them.
+    """
     try:
         encrypted = privacy_module.encrypt_model(base64.b64decode(request.data))
         return EncryptResponse(encrypted_data=base64.b64encode(encrypted).decode("ascii"))
@@ -165,6 +242,11 @@ async def encrypt(request: EncryptRequest) -> EncryptResponse:
 
 @app.post("/privacy/decrypt")
 async def decrypt(request: DecryptRequest) -> DecryptResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the federated aggregator or policy manager
+    during testing or secure decryption phases. It restores encrypted weights back to base64 raw format
+    so they can be mathematically combined.
+    """
     try:
         decrypted = privacy_module.decrypt_model(base64.b64decode(request.encrypted_data))
         return DecryptResponse(data=base64.b64encode(decrypted).decode("ascii"))
@@ -173,6 +255,12 @@ async def decrypt(request: DecryptRequest) -> DecryptResponse:
 
 @app.post("/privacy/prepare-secure-update", response_model=SecureAggregationPrepareResponse)
 async def prepare_secure_update(request: SecureAggregationPrepareRequest) -> SecureAggregationPrepareResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent to prepare a model update.
+    It fetches an asymmetric key from the Policy Manager, masks the local GNN model weights, and 
+    encrypts the mask share. The business reason is to allow the banks to aggregate their models
+    securely, ensuring no raw bank models are ever exposed in transit.
+    """
     try:
         try:
             import torch
@@ -202,6 +290,11 @@ async def prepare_secure_update(request: SecureAggregationPrepareRequest) -> Sec
 
 @app.post("/privacy/evaluate", response_model=PrivacyEvaluationResponse)
 async def evaluate_privacy(request: PrivacyEvaluationRequest) -> PrivacyEvaluationResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent or coordinator to audit
+    the privacy parameters. It measures changes in parameters (e.g. cosine similarity, L2 distance)
+    to mathematically verify that customer transactions cannot be leaked through the model.
+    """
     try:
         raw_bytes = base64.b64decode(request.raw_weights)
         protected_bytes = base64.b64decode(request.protected_weights)
@@ -300,6 +393,11 @@ async def evaluate_privacy(request: PrivacyEvaluationRequest) -> PrivacyEvaluati
 
 @app.post("/privacy/evaluate/sweep", response_model=PrivacySweepResponse)
 async def evaluate_privacy_sweep(request: PrivacySweepRequest) -> PrivacySweepResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by research operators or the local agent
+    to run simulated privacy settings at different noise levels. The business reason is to find the
+    optimal trade-off where privacy is maximized without degrading GNN model performance.
+    """
     try:
         results = []
         for noise_multiplier in request.noise_multipliers:
@@ -324,6 +422,11 @@ async def evaluate_privacy_sweep(request: PrivacySweepRequest) -> PrivacySweepRe
 
 @app.post("/privacy/clip-gradients", response_model=ClipGradientsResponse)
 async def clip_gradients(request: ClipGradientsRequest) -> ClipGradientsResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called during GNN training to normalize training updates
+    (gradients) before adding DP noise. The business reason is to cap the impact of any single outlier
+    transaction on the GNN model, ensuring individual customer patterns are not memorized by the AI.
+    """
     try:
         try:
             import torch

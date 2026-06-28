@@ -88,6 +88,11 @@ DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
 }
 
 class AgentBudget(Base):
+    """
+    BUSINESS REASON: Database table representing a bank node's allocated and spent
+    Differential Privacy budget. It tracks how much information (epsilon and delta)
+    the bank has leaked through model updates to ensure it doesn't violate limits.
+    """
     __tablename__ = "agent_budgets"
 
     agent_id = Column(String, primary_key=True)
@@ -98,6 +103,10 @@ class AgentBudget(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 class GlobalPolicyRow(Base):
+    """
+    BUSINESS REASON: Database table storing global parameters (e.g. minimum accuracy,
+    required metrics, and aggregation strategies) governing the entire federated network.
+    """
     __tablename__ = "global_policies"
 
     policy_name = Column(String, primary_key=True)
@@ -107,6 +116,10 @@ class GlobalPolicyRow(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 class GovernanceAgentRow(Base):
+    """
+    BUSINESS REASON: Database table tracking which bank nodes are authorized to join
+    the network, their asset eligibility, and their reliability scores.
+    """
     __tablename__ = "governance_agents"
 
     agent_id = Column(String, primary_key=True)
@@ -117,6 +130,10 @@ class GovernanceAgentRow(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
 class GovernanceEventRow(Base):
+    """
+    BUSINESS REASON: Database table storing an immutable audit trail of governance actions
+    (e.g., changes to global policies, agents being deactivated, or budgets being updated).
+    """
     __tablename__ = "governance_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -126,6 +143,10 @@ class GovernanceEventRow(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 class SecureAggregationMaskRow(Base):
+    """
+    BUSINESS REASON: Database table holding encrypted shares of secret masks submitted
+    by bank nodes. These shares are reconstructed to cancel out the mask noise during aggregation.
+    """
     __tablename__ = "secure_aggregation_masks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -135,20 +156,32 @@ class SecureAggregationMaskRow(Base):
     submitted_at = Column(DateTime(timezone=True), nullable=False)
 
 class BudgetUpdateRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used to add spent epsilon and delta to a bank's total.
+    """
     agent_id: str
     epsilon_spent: float
     delta_spent: float
 
 class BudgetSetRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used to initialize or reset a bank's privacy limits.
+    """
     agent_id: str
     epsilon: float
     delta: float
 
 class GlobalPolicyUpdateRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used to push new configuration overrides to the network.
+    """
     policies: Dict[str, Any]
     updated_by: str = "system"
 
 class GovernanceAgentRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used to modify a bank node's authorization settings.
+    """
     agent_id: str
     active: bool = True
     allowed_asset_types: List[str] = ["CBDC"]
@@ -156,6 +189,9 @@ class GovernanceAgentRequest(BaseModel):
     notes: Optional[str] = None
 
 class GovernanceAgentResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns active status and metadata details of a governed bank node.
+    """
     agent_id: str
     active: bool
     allowed_asset_types: List[str]
@@ -164,6 +200,9 @@ class GovernanceAgentResponse(BaseModel):
     updated_at: datetime
 
 class GovernanceEventResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns details of a specific governance audit trail record.
+    """
     id: int
     agent_id: Optional[str] = None
     event_type: str
@@ -171,27 +210,45 @@ class GovernanceEventResponse(BaseModel):
     created_at: datetime
 
 class SecureAggregationMaskSubmitRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used by bank nodes to store their encrypted mask shares.
+    """
     round_id: str
     agent_id: str
     encrypted_mask_share: str
 
 class SecureAggregationMaskAggregateItem(BaseModel):
+    """
+    BUSINESS REASON: Metadata of a participant whose mask needs to be factored into
+    the global aggregation weights.
+    """
     agent_id: str
     sample_size: int
     reliability_score: float = 1.0
     metrics: Dict[str, float] = {}
 
 class SecureAggregationMaskAggregateRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload sent by the aggregator to decrypt and reconstruct
+    the combined cancelation mask for all participants in a given round.
+    """
     round_id: str
     strategy: str = "FedAvg"
     updates: List[SecureAggregationMaskAggregateItem]
 
 class SecureAggregationMaskAggregateResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the combined mask vector to cancel out privacy noise during aggregation.
+    """
     aggregate_mask: str
     participant_count: int
 
 
 class SecureAggregationEscrowPublicKeyResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the escrow server's public key (X25519) to let bank nodes
+    encrypt their mask shares.
+    """
     scheme: str
     public_key: str
 
@@ -225,11 +282,19 @@ ESCROW_PUBLIC_KEY = ESCROW_PRIVATE_KEY.public_key().public_bytes(
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: Checked by system orchestrators to ensure that the Policy Manager
+    service is running and responsive.
+    """
     return {"status": "healthy"}
 
 
 @app.get("/secure-aggregation/escrow/public-key", response_model=SecureAggregationEscrowPublicKeyResponse)
 async def get_secure_aggregation_escrow_public_key():
+    """
+    BUSINESS PURPOSE / REASON: Called by bank nodes before starting training. It returns the escrow
+    asymmetric public key so the bank can encrypt its secret mask share.
+    """
     return SecureAggregationEscrowPublicKeyResponse(
         scheme="x25519-hkdf-fernet-v1",
         public_key=base64.b64encode(ESCROW_PUBLIC_KEY).decode("ascii"),
@@ -393,11 +458,19 @@ def _decrypt_escrowed_mask_share(mask_share: str) -> bytes:
 
 @app.get("/policies/budget/{agent_id:path}", response_model=PrivacyBudget)
 async def get_agent_budget(agent_id: str):
+    """
+    BUSINESS PURPOSE / REASON: Called by bank nodes to fetch their remaining Differential Privacy
+    budget (epsilon/delta balance) before deciding whether to join a round.
+    """
     budget = _get_or_create_budget(agent_id)
     return _to_privacy_budget(budget)
 
 @app.post("/policies/budget/update")
 async def update_budget(request: BudgetUpdateRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by the Central Coordinator after a bank successfully
+    submits model weights, "charging" their privacy account for the budget spent in the round.
+    """
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         budget = session.get(AgentBudget, request.agent_id)
@@ -437,6 +510,10 @@ async def update_budget(request: BudgetUpdateRequest):
 
 @app.post("/policies/budget/set")
 async def set_budget(request: BudgetSetRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by the dashboard or compliance officers to allocate or reset
+    the total privacy budget limit for a specific bank node.
+    """
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         budget = session.get(AgentBudget, request.agent_id)
@@ -465,6 +542,10 @@ async def set_budget(request: BudgetSetRequest):
 
 @app.get("/policies/global")
 async def get_global_policies():
+    """
+    BUSINESS PURPOSE / REASON: Called by the Coordinator and bank nodes to fetch the global policies
+    and parameter constraints governing round eligibility and aggregation.
+    """
     with SessionLocal() as session:
         row = session.get(GlobalPolicyRow, "global")
         if row is None:
@@ -477,6 +558,10 @@ async def get_global_policies():
 
 @app.post("/policies/global")
 async def update_global_policies(request: GlobalPolicyUpdateRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by compliance officers or automatically when a consensus vote
+    reaches approval to update the global system settings or fraud taxonomy list.
+    """
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         row = session.get(GlobalPolicyRow, "global")
@@ -512,6 +597,9 @@ async def update_global_policies(request: GlobalPolicyUpdateRequest):
 
 @app.get("/governance/agent/{agent_id:path}", response_model=GovernanceAgentResponse)
 async def get_governance_agent(agent_id: str):
+    """
+    BUSINESS PURPOSE / REASON: Used to fetch the active status and permission level of a specific bank node.
+    """
     with SessionLocal() as session:
         row = session.get(GovernanceAgentRow, agent_id)
         if row is None:
@@ -530,6 +618,10 @@ async def get_governance_agent(agent_id: str):
 
 @app.post("/governance/agent", response_model=GovernanceAgentResponse)
 async def upsert_governance_agent(request: GovernanceAgentRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by system administrators to activate, deactivate, or update
+    reliability ratings/allowed assets for a specific bank node.
+    """
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         row = session.get(GovernanceAgentRow, request.agent_id)
@@ -566,6 +658,10 @@ async def upsert_governance_agent(request: GovernanceAgentRequest):
 
 @app.get("/governance/audit", response_model=List[GovernanceEventResponse])
 async def list_governance_audit(limit: int = 50):
+    """
+    BUSINESS PURPOSE / REASON: Called by the dashboard or compliance officers to view a chronological log
+    of all network adjustments, policy changes, and participant additions.
+    """
     with SessionLocal() as session:
         rows = (
             session.execute(
@@ -587,6 +683,10 @@ async def list_governance_audit(limit: int = 50):
 
 @app.post("/secure-aggregation/masks/submit")
 async def submit_secure_aggregation_mask(request: SecureAggregationMaskSubmitRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by bank nodes to escrow their encrypted mask shares
+    with the Policy Manager at the start of a training round.
+    """
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         existing = (
@@ -620,6 +720,11 @@ async def submit_secure_aggregation_mask(request: SecureAggregationMaskSubmitReq
 
 @app.post("/secure-aggregation/masks/aggregate", response_model=SecureAggregationMaskAggregateResponse)
 async def aggregate_secure_aggregation_masks(request: SecureAggregationMaskAggregateRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by the aggregator during the model combination phase.
+    It decrypts the escrowed mask shares using its private key, averages them, and returns
+    the final cancellation mask to remove privacy noise from the model updates.
+    """
     try:
         with SessionLocal() as session:
             rows = (

@@ -83,6 +83,12 @@ DEFAULT_PSEUDO_LABEL_CONFIDENCE = float(os.getenv("PSEUDO_LABEL_CONFIDENCE", "0.
 
 # --- LangGraph State Definition ---
 class LocalAgentState(TypedDict):
+    """
+    BUSINESS REASON: Think of this state dictionary as the "flight log" or "ledger" of the
+    Local Agent's training run. It holds all the current parameters, trained weights,
+    evaluated metrics, resource checks, and planning traces as they pass through the
+    orchestrated nodes in the LangGraph execution flow.
+    """
     agent_id: str
     round_id: str
     data_ready: bool
@@ -116,6 +122,11 @@ class LocalAgentState(TypedDict):
 
 
 class AgentInferencePrediction(BaseModel):
+    """
+    BUSINESS REASON: Represents a single predicted fraud warning for a transaction.
+    The Local Agent uses this structure to decide whether to publish an alert into the
+    Kafka queue.
+    """
     tx_id: int
     predicted_class: str
     predicted_label: int
@@ -127,6 +138,10 @@ class AgentInferencePrediction(BaseModel):
 
 
 class AgentInferenceResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns a structured summary of model predictions to allow
+    the operator or alerting system to analyze current GNN risk assessments.
+    """
     status: str
     agent_id: str
     generated_at: str
@@ -135,6 +150,10 @@ class AgentInferenceResponse(BaseModel):
 
 
 class ParticipationDecision(BaseModel):
+    """
+    BUSINESS REASON: Captures the details of the bank node's decision on whether to join
+    a training round. It includes logs of CPU, battery, and privacy budget balances.
+    """
     allowed: bool
     reason: str
     checks: Dict[str, object]
@@ -791,6 +810,10 @@ async def fetch_inference_predictions(limit: int = 10, tx_ids: Optional[List[int
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by orchestrators or coordinator monitors
+    to check that the local agent service is healthy, alive, and listening on its HTTP port.
+    """
     return {"status": "healthy"}
 
 @app.on_event("startup")
@@ -799,15 +822,28 @@ async def startup_event():
 
 @app.get("/agent/status")
 async def get_status():
+    """
+    BUSINESS PURPOSE / REASON: This endpoint allows the dashboard or coordinator to fetch the 
+    current status, metrics, adaptive planning traces, and recent round statistics of this node.
+    """
     return agent_status
 
 
 @app.get("/agent/inference", response_model=AgentInferenceResponse)
 async def get_agent_inference(limit: int = 10):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the dashboard or compliance systems
+    to fetch real-time GNN fraud prediction probabilities for the most suspicious local transactions.
+    """
     return await fetch_inference_predictions(limit=limit)
 
 @app.post("/agent/round/start")
 async def start_local_round(round_id: str, agent_id: str, selected_strategy: str = "FedAvg", fedprox_mu: Optional[float] = None):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Central Coordinator to command
+    the bank node to begin a training round. It checks battery, CPU, and privacy limits,
+    loads the latest global model, triggers training, applies privacy masks, and registers the update.
+    """
     logger.info(f"Local Agent {agent_id} starting round {round_id}")
     decision = await evaluate_participation_constraints(agent_id)
     agent_status["last_participation_decision"] = {
@@ -908,6 +944,11 @@ async def start_local_round(round_id: str, agent_id: str, selected_strategy: str
 
 @app.post("/agent/negotiate/propose-weights", response_model=WeightNegotiationResponse)
 async def propose_weights(request: WeightNegotiationRequest):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Central Coordinator during weight negotiation.
+    It evaluates the other participant banks' metrics (e.g. F1-score, sample size, reliability) and calculates
+    what weighting they should have in model aggregation to ensure fair and accurate collaborative learning.
+    """
     logger.info(f"Local Agent negotiating weights for round {request.round_id}")
     proposed_weights = {}
     scores = {}
@@ -938,6 +979,11 @@ async def propose_weights(request: WeightNegotiationRequest):
 
 @app.post("/agent/consensus/evaluate-pattern", response_model=ConsensusVote)
 async def evaluate_pattern(proposal: FraudPatternProposal):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Central Coordinator during consensus voting.
+    It checks proposed new fraud pattern detection rules (like features thresholds or velocity counts)
+    against safety boundaries, voting to APPROVE or REJECT the proposal to govern the global policy.
+    """
     logger.info(f"Local Agent evaluating fraud pattern proposal {proposal.proposal_id} ({proposal.pattern_name})")
     vote = "APPROVE"
     reason = "All pattern indicators are within valid statistical and structural ranges"
@@ -961,6 +1007,10 @@ async def evaluate_pattern(proposal: FraudPatternProposal):
 
 @app.post("/agent/consensus/propose-pattern")
 async def propose_pattern(proposal_data: dict):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local bank's compliance officer or dashboard
+    to propose a new fraud pattern rule to the federated network, initiating a democratic vote.
+    """
     proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
     my_id = str(agent_status.get("agent_id", "local-agent"))
     proposal = FraudPatternProposal(

@@ -84,6 +84,12 @@ MODEL_DELTA_MIN_COSINE_SIMILARITY = float(os.getenv("MODEL_DELTA_MIN_COSINE_SIMI
 
 
 class WorkflowStateStore:
+    """
+    BUSINESS REASON: The coordinator needs a reliable way to save and reload the state of
+    active federated rounds across restarts or container scale-ups. This class wraps Redis (or
+    falls back to in-memory storage) to persist round configurations, submitted agent updates,
+    and performance profiles.
+    """
     def __init__(self):
         self.available = False
         self.client = None
@@ -119,6 +125,16 @@ class WorkflowStateStore:
             return default
 
 class UpdateSubmission(BaseModel):
+    """
+    BUSINESS REASON: This schema models a single GNN update package submitted by a bank node.
+    It contains:
+    - 'agent_id': Which bank node is submitting.
+    - 'weights': The trained parameters (possibly masked for secure aggregation).
+    - 'encrypted_weights': Fully encrypted parameters (if transport encryption is used).
+    - 'encrypted_mask_share': The encrypted seed used to cancel out noise in secure aggregation.
+    - 'metrics': Local GNN accuracy and loss to judge model quality.
+    - 'sample_size': The amount of transaction data the bank used (vital for volume-based weighting).
+    """
     agent_id: str
     round_id: str
     weights: str
@@ -135,6 +151,10 @@ class UpdateSubmission(BaseModel):
     client_timestamp: Optional[str] = None
 
 class SubmissionAck(BaseModel):
+    """
+    BUSINESS REASON: Standard response sent to bank nodes when they submit GNN weights.
+    It lets the bank know if its parameters were successfully received or rejected due to safety checks.
+    """
     accepted: bool
     message: str
 
@@ -181,6 +201,12 @@ DEFAULT_GLOBAL_POLICIES: Dict[str, Any] = {
 
 # --- LangGraph State Definition ---
 class AgentState(TypedDict):
+    """
+    BUSINESS REASON: The Coordinator uses a state-machine (orchestrated via LangGraph)
+    to manage the workflow of a federated learning round. This state tracks active participants,
+    received model updates, updates that passed outlier screening, the negotiated weights,
+    and status flags indicating round progress.
+    """
     round_id: str
     active_agents: List[str]
     updates_received: List[UpdateSubmission]
@@ -1145,10 +1171,19 @@ app = FastAPI(title="Agentic Coordinator Service", lifespan=app_lifespan)
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: Checked by monitoring servers to verify that the Coordinator
+    is online and healthy.
+    """
     return {"status": "healthy"}
 
 @app.post("/updates/submit", response_model=SubmissionAck)
 async def submit_update(update: UpdateSubmission):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the individual bank nodes after they
+    finish training. It accepts their masked GNN weights, saves them in Redis/memory, and notifies
+    the active round wait-task. The business goal is to receive all bank updates securely.
+    """
     if not update.privacy_applied:
         raise HTTPException(status_code=400, detail="Protected model update required before submission")
     if not update.weights:
@@ -1185,6 +1220,11 @@ async def submit_update(update: UpdateSubmission):
 
 @app.post("/rounds/start")
 async def start_round(round_id: str):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the orchestration script or dashboard
+    to trigger a collaborative training round. It kicks off the agentic LangGraph workflow,
+    from policy checking to aggregation and final model registry saving.
+    """
     logger.info(f"Starting federated round: {round_id}")
     round_updates[round_id] = []
     round_expected_agents[round_id] = []
@@ -1213,6 +1253,11 @@ async def start_round(round_id: str):
 
 @app.post("/consensus/propose-fraud-pattern")
 async def propose_fraud_pattern(proposal: FraudPatternProposal):
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by bank nodes to propose a new GNN fraud taxonomy
+    rule (e.g. flagging self-transfers or high-velocity accounts). It initiates a network-wide poll across
+    all banks, counts votes, and updates the Policy Manager upon consensus.
+    """
     logger.info(f"Consensus proposal received: {proposal.proposal_id} ({proposal.pattern_name}) from proposer {proposal.proposer_id}")
     active_agents = LOCAL_AGENT_URLS
     

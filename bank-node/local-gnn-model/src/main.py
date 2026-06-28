@@ -83,7 +83,20 @@ def _append_structural_features(x: torch.Tensor, edge_index: torch.Tensor) -> to
     )
     return torch.cat([x, structural.to(dtype=x.dtype)], dim=1)
 
+# BUSINESS REASON: These schema classes define the structured contracts (request and response shapes)
+# used to control the local training and inference execution on GNN transaction networks.
+
 class TrainRequest(BaseModel):
+    """
+    BUSINESS REASON: Transports training hyper-parameters to start a local training run.
+    - 'round_id': Tracks the current collaborative federated learning round.
+    - 'global_weights': The global GNN model parameters to load before training.
+    - 'epochs': The number of passes through the training graph dataset.
+    - 'strategy': The aggregation method being used (e.g. FedAvg or FedProxGNN).
+    - 'fedprox_mu': The regularizing penalty weight (if strategy is FedProxGNN).
+    - 'pseudo_label_weight': The weight given to self-labeled guesses when data is sparse.
+    - 'pseudo_label_confidence': The probability threshold for self-labeled guesses.
+    """
     round_id: Optional[str] = None
     global_weights: Optional[str] = None
     epochs: int = 1
@@ -93,6 +106,13 @@ class TrainRequest(BaseModel):
     pseudo_label_confidence: Optional[float] = None
 
 class TrainResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the locally updated GNN weights and training metrics
+    to be aggregated by the central coordinator.
+    - 'weights': The trained GNN parameters (base64).
+    - 'sample_size': The number of training samples used.
+    - 'metrics': Statistics like accuracy, loss, and graph characteristics.
+    """
     status: str
     weights: str
     sample_size: int
@@ -100,12 +120,26 @@ class TrainResponse(BaseModel):
 
 
 class InferenceRequest(BaseModel):
+    """
+    BUSINESS REASON: Requests fraud evaluation for a set of transactions.
+    - 'tx_ids': The list of transaction IDs to investigate. If omitted, rank by risk.
+    - 'global_weights': The global model weights to apply.
+    - 'limit': The maximum number of risk predictions to return.
+    """
     tx_ids: Optional[List[int]] = None
     global_weights: Optional[str] = None
     limit: int = 20
 
 
 class InferencePrediction(BaseModel):
+    """
+    BUSINESS REASON: Represents the GNN risk prediction for a single transaction.
+    - 'tx_id': The transaction ID.
+    - 'predicted_class': 'licit' (safe), 'illicit' (fraud), or 'unknown'.
+    - 'predicted_label': Numeric label corresponding to class.
+    - 'confidence': Probability score of the top predicted class.
+    - 'illicit_probability': GNN probability that the transaction is fraud.
+    """
     tx_id: int
     predicted_class: str
     predicted_label: int
@@ -117,6 +151,9 @@ class InferencePrediction(BaseModel):
 
 
 class InferenceResponse(BaseModel):
+    """
+    BUSINESS REASON: Delivers a set of GNN risk predictions to the local agent to publish alerts.
+    """
     status: str
     prediction_count: int
     predictions: List[InferencePrediction]
@@ -189,6 +226,11 @@ app = FastAPI(title="Local GNN Model Service", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the local agent or orchestrators
+    to check the health of the local GNN training service, ensuring it is ready to process
+    training or prediction requests.
+    """
     return {"status": "healthy"}
 
 import httpx
@@ -391,6 +433,12 @@ def _format_prediction(tx_id: int, predicted_label: int, probabilities: torch.Te
 
 @app.post("/train")
 async def trigger_training(request: TrainRequest) -> TrainResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Local Agent during a federated learning
+    round. It initiates GNN model training on the bank's local transaction graph. The business goal is
+    to allow the GNN model to adjust its parameters to match local transaction characteristics while
+    using strategies like FedProx and pseudo-labeling.
+    """
     try:
         data = _load_graph_data()
         trainer = _init_trainer(int(data.x.shape[1]))
@@ -471,6 +519,11 @@ async def trigger_training(request: TrainRequest) -> TrainResponse:
 
 @app.post("/infer", response_model=InferenceResponse)
 async def run_inference(request: InferenceRequest) -> InferenceResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Local Agent to evaluate transaction risk.
+    It takes either a specific list of transaction IDs or ranks all local transactions by their likelihood
+    of illicit activity. The business goal is to generate risk scores to trigger fraud alert events.
+    """
     try:
         data = _load_graph_data()
         trainer = _init_trainer(int(data.x.shape[1]))

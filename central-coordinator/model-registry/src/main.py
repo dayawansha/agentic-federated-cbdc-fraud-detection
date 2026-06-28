@@ -96,6 +96,11 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
 class ModelVersionRow(Base):
+    """
+    BUSINESS REASON: Database table representing a catalog entry for a registered GNN model.
+    It links a specific version ID to its creation date, accuracy metrics, and the storage path
+    (local or S3 URI) of its weights file.
+    """
     __tablename__ = "model_versions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -106,6 +111,12 @@ class ModelVersionRow(Base):
     is_global = Column(Boolean, nullable=False, default=True)
 
 class RegisterModelRequest(BaseModel):
+    """
+    BUSINESS REASON: Request payload used to register a newly aggregated or trained GNN model version.
+    - 'version_id': Unique tag (e.g. v-round-5).
+    - 'metrics': Map of evaluations like accuracy and loss.
+    - 'weights': base64 binary weights to store.
+    """
     version_id: Optional[str] = None
     metrics: Dict[str, float] = {}
     artifact_path: Optional[str] = None
@@ -113,6 +124,10 @@ class RegisterModelRequest(BaseModel):
     weights: Optional[str] = None
 
 class ModelVersion(BaseModel):
+    """
+    BUSINESS REASON: Response structure returning the details of a model's catalog entry,
+    used to show the history of global updates.
+    """
     version_id: str
     created_at: datetime
     metrics: Dict[str, float]
@@ -120,6 +135,10 @@ class ModelVersion(BaseModel):
     is_global: bool = True
 
 class ModelWeightsResponse(BaseModel):
+    """
+    BUSINESS REASON: Response structure used to deliver binary weights payload (in base64)
+    back to a requester (such as a bank node starting local training).
+    """
     version_id: str
     weights: str
 
@@ -249,10 +268,19 @@ async def startup_event():
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: Checked by system orchestrators to ensure that the Model Registry
+    service is running and responsive.
+    """
     return {"status": "healthy"}
 
 @app.post("/models/register")
 async def register_model(request: RegisterModelRequest):
+    """
+    BUSINESS PURPOSE / REASON: Called by the Coordinator at the end of a round. It stores the new
+    aggregated weights in the local artifacts folder or S3/MinIO bucket, saves the training accuracy
+    metrics to the database, logs the version in MLflow, and returns the unique version ID.
+    """
     version_id = request.version_id or f"v-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
     created_at = datetime.now(timezone.utc)
 
@@ -329,6 +357,10 @@ async def register_model(request: RegisterModelRequest):
 
 @app.get("/models/latest")
 async def get_latest_model():
+    """
+    BUSINESS PURPOSE / REASON: Called by the Coordinator or Local Agents to query metadata
+    and evaluation metrics of the most recently aggregated Global GNN Model.
+    """
     with SessionLocal() as session:
         row = session.execute(select(ModelVersionRow).order_by(desc(ModelVersionRow.created_at)).limit(1)).scalar_one_or_none()
         if row is None:
@@ -363,11 +395,19 @@ def _read_artifact_base64(version_id: str, artifact_path: str) -> ModelWeightsRe
 
 @app.get("/models/latest/weights", response_model=ModelWeightsResponse)
 async def get_latest_model_weights():
+    """
+    BUSINESS PURPOSE / REASON: Called by bank nodes starting a training round to download
+    the latest aggregated model weights vector (base64) to initialize local GNN parameters.
+    """
     latest = await get_latest_model()
     return _read_artifact_base64(latest.version_id, latest.artifact_path)
 
 @app.get("/models/{version_id}/weights", response_model=ModelWeightsResponse)
 async def get_model_weights(version_id: str):
+    """
+    BUSINESS PURPOSE / REASON: Allows downloading weights (base64) of any specific historical GNN model version
+    for rollback, auditing, or comparison testing.
+    """
     with SessionLocal() as session:
         row = session.execute(
             select(ModelVersionRow).where(ModelVersionRow.version_id == version_id).limit(1)

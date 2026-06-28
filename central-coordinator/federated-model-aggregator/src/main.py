@@ -284,6 +284,11 @@ class FederatedModelAggregator:
         return noisy
 
 class AggregationItem(BaseModel):
+    """
+    BUSINESS REASON: Defines the parameters of a single bank node's GNN model update
+    being sent for aggregation. It includes the weights payload, metrics, sample size,
+    reliability score, and optional negotiated weights.
+    """
     agent_id: str
     weights: str
     encrypted_weights: Optional[str] = None
@@ -297,6 +302,10 @@ class AggregationItem(BaseModel):
     negotiated_weight: Optional[float] = None
 
 class AggregateRequest(BaseModel):
+    """
+    BUSINESS REASON: Gathers all participant model updates, the target aggregation strategy,
+    noise multipliers, and optional reference weights needed to perform federated aggregation.
+    """
     round_id: str
     updates: List[AggregationItem]
     strategy: str = "FedAvg"
@@ -304,6 +313,10 @@ class AggregateRequest(BaseModel):
     global_reference_weights: Optional[str] = None
 
 class AggregateResponse(BaseModel):
+    """
+    BUSINESS REASON: Returns the aggregated global GNN weights and the mathematically weighted
+    average of performance metrics from all participants.
+    """
     success: bool
     aggregated_weights: str
     global_metrics: Dict[str, float]
@@ -343,10 +356,20 @@ app = FastAPI(title="Federated Model Aggregator Service")
 
 @app.get("/health")
 async def health_check():
+    """
+    BUSINESS PURPOSE / REASON: Checked by system orchestrators to ensure that the Model Aggregator
+    service is running and responsive.
+    """
     return {"status": "healthy"}
 
 @app.post("/aggregate")
 async def aggregate(request: AggregateRequest) -> AggregateResponse:
+    """
+    BUSINESS PURPOSE / REASON: This endpoint is called by the Central Coordinator at the end of a round.
+    It takes all private model updates, decrypts them if necessary, and averages/combines them
+    using strategies like FedAvg, FedProx, or RobustMedian. The business goal is to produce
+    the updated collective Global GNN Model weights.
+    """
     try:
         if not request.updates:
             raise HTTPException(status_code=400, detail="No updates provided")
