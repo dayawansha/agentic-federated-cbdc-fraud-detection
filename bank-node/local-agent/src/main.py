@@ -48,6 +48,7 @@ from shared.schemas.models import (
     FraudPatternProposal,
     ConsensusVote,
 )
+from shared.reasoning.engine import get_reasoning_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -193,108 +194,33 @@ def _normalize_inference_prediction(prediction: object) -> Dict[str, object]:
     }
 
 
-def _derive_local_training_plan(state: LocalAgentState) -> Dict[str, object]:
+def _build_local_plan_context(state: LocalAgentState) -> Dict[str, object]:
     checks = state.get("participation_checks", {}) or {}
-    privacy_budget = checks.get("privacy_budget", {}) if isinstance(checks, dict) else {}
-    policy_constraints = checks.get("policy_constraints", {}) if isinstance(checks, dict) else {}
-    previous_metrics = _coerce_numeric_metrics(agent_status.get("last_metrics"))
-    inference_summary = agent_status.get("last_inference_summary", {})
-    inference_summary = inference_summary if isinstance(inference_summary, dict) else {}
-
-    previous_accuracy = _clamp(previous_metrics.get("accuracy", 0.75), 0.0, 1.0)
-    previous_loss = max(0.0, previous_metrics.get("loss", 0.4))
-    previous_labeled_ratio = _clamp(previous_metrics.get("labeled_ratio", 1.0), 0.0, 1.0)
-    previous_sparse_mode = previous_metrics.get("sparse_label_mode", 0.0) >= 0.5
-
-    high_risk_count = max(0.0, _numeric_value(inference_summary, "high_risk_count", 0.0))
-    top_confidence = _clamp(_numeric_value(inference_summary, "top_confidence", 0.0), 0.0, 1.0)
-    risk_pressure = _clamp((high_risk_count / max(ALERT_PUBLISH_LIMIT, 1)) * 0.6 + top_confidence * 0.4, 0.0, 1.0)
-    performance_pressure = _clamp(((1.0 - previous_accuracy) * 0.65) + (_clamp(previous_loss / 2.0, 0.0, 1.0) * 0.35), 0.0, 1.0)
-    sparse_label_pressure = _clamp(max(1.0 - previous_labeled_ratio, 0.8 if previous_sparse_mode else 0.0), 0.0, 1.0)
-
-    remaining_epsilon = _numeric_value(privacy_budget, "remaining_epsilon", PROJECTED_ROUND_EPSILON_SPEND * 10.0)
-    epsilon = max(_numeric_value(privacy_budget, "epsilon", max(remaining_epsilon, 1.0)), 1e-6)
-    required_reserve = _numeric_value(privacy_budget, "required_reserve_epsilon", 0.0)
-    usable_epsilon = max(0.0, remaining_epsilon - required_reserve)
-    budget_ratio = _clamp(usable_epsilon / epsilon, 0.0, 1.0)
-    budget_pressure = 1.0 - budget_ratio
-
-    min_noise = _numeric_value(policy_constraints, "min_noise_multiplier", 0.0)
-    max_noise = max(min_noise, _numeric_value(policy_constraints, "max_noise_multiplier", max(DP_NOISE_MULTIPLIER, 0.05)))
-    target_noise = DP_NOISE_MULTIPLIER
-    if budget_pressure >= 0.5:
-        target_noise = DP_NOISE_MULTIPLIER + (max_noise - DP_NOISE_MULTIPLIER) * budget_pressure
-    elif performance_pressure >= 0.45 and budget_pressure < 0.4:
-        target_noise = DP_NOISE_MULTIPLIER - (DP_NOISE_MULTIPLIER - min_noise) * performance_pressure * 0.6
-    target_noise = _clamp(target_noise, min_noise, max_noise)
-
-    adaptivity_score = _clamp(
-        (performance_pressure * 0.4) + (sparse_label_pressure * 0.35) + (risk_pressure * 0.25),
-        0.0,
-        1.0,
-    )
-    local_epochs = DEFAULT_LOCAL_TRAINING_EPOCHS
-    if adaptivity_score >= 0.35:
-        local_epochs += 1
-    if adaptivity_score >= 0.7:
-        local_epochs += 1
-    local_epochs = min(local_epochs, MAX_ADAPTIVE_LOCAL_EPOCHS)
-    if budget_pressure >= 0.85:
-        local_epochs = min(local_epochs, max(DEFAULT_LOCAL_TRAINING_EPOCHS, 2))
-
-    selected_strategy = str(state.get("selected_strategy", "FedAvg"))
-    local_training_strategy = selected_strategy
-    if state.get("global_model_loaded") and (selected_strategy == "FedProxGNN" or sparse_label_pressure >= 0.6 or performance_pressure >= 0.6):
-        local_training_strategy = "FedProxGNN"
-
-    fedprox_mu = float(state.get("fedprox_mu", FEDPROX_MU))
-    if local_training_strategy == "FedProxGNN":
-        fedprox_mu = round(max(0.25, fedprox_mu * (1.0 + (0.5 * sparse_label_pressure))), 4)
-
-    pseudo_label_weight = 0.0
-    pseudo_label_confidence = DEFAULT_PSEUDO_LABEL_CONFIDENCE
-    if sparse_label_pressure >= 0.25:
-        pseudo_label_weight = round(_clamp(DEFAULT_PSEUDO_LABEL_WEIGHT + (0.25 * sparse_label_pressure), 0.1, 0.75), 4)
-        pseudo_label_confidence = round(
-            _clamp(DEFAULT_PSEUDO_LABEL_CONFIDENCE - (0.15 * sparse_label_pressure) + (0.05 * performance_pressure), 0.7, 0.97),
-            4,
-        )
-
-    run_post_round_inference = AUTO_ALERT_ON_ROUND_COMPLETE and (
-        risk_pressure >= 0.2 or performance_pressure >= 0.5 or sparse_label_pressure >= 0.5
-    )
-    post_round_inference_limit = max(ALERT_PUBLISH_LIMIT, min(25, ALERT_PUBLISH_LIMIT + int(risk_pressure * 10) + int(sparse_label_pressure * 5)))
-
-    reasoning_trace: List[str] = []
-    if budget_pressure >= 0.5:
-        reasoning_trace.append("Privacy budget is tightening, so the plan increases DP noise within policy bounds.")
-    if performance_pressure >= 0.45:
-        reasoning_trace.append("Recent model quality is weak, so the plan allocates extra local epochs.")
-    if sparse_label_pressure >= 0.25:
-        reasoning_trace.append("Sparse labels were detected, so the plan enables semi-supervised pseudo-label training.")
-    if local_training_strategy == "FedProxGNN":
-        reasoning_trace.append("A global reference model is available, so the plan uses FedProx-style local regularization.")
-    if run_post_round_inference:
-        reasoning_trace.append("Elevated fraud or model-risk signals trigger a post-round inference sweep for alert publishing.")
-    if not reasoning_trace:
-        reasoning_trace.append("Local conditions are stable, so the plan keeps a lightweight round configuration.")
-
     return {
-        "risk_pressure": round(risk_pressure, 4),
-        "performance_pressure": round(performance_pressure, 4),
-        "sparse_label_pressure": round(sparse_label_pressure, 4),
-        "budget_pressure": round(budget_pressure, 4),
-        "plan_confidence": round(0.5 + (adaptivity_score * 0.5), 4),
-        "local_epochs": int(local_epochs),
-        "noise_multiplier": round(target_noise, 6),
-        "local_training_strategy": local_training_strategy,
-        "fedprox_mu": round(fedprox_mu, 4),
-        "pseudo_label_weight": round(pseudo_label_weight, 4),
-        "pseudo_label_confidence": round(pseudo_label_confidence, 4),
-        "run_post_round_inference": bool(run_post_round_inference),
-        "post_round_inference_limit": int(post_round_inference_limit),
-        "reasoning_trace": reasoning_trace,
+        "agent_id": state.get("agent_id", str(agent_status.get("agent_id", "local-agent"))),
+        "round_id": state.get("round_id"),
+        "selected_strategy": state.get("selected_strategy", "FedAvg"),
+        "global_model_loaded": bool(state.get("global_model_loaded", False)),
+        "participation_checks": checks,
+        "previous_metrics": _coerce_numeric_metrics(agent_status.get("last_metrics")),
+        "inference_summary": agent_status.get("last_inference_summary", {}),
+        "dp_noise_multiplier": DP_NOISE_MULTIPLIER,
+        "default_local_training_epochs": DEFAULT_LOCAL_TRAINING_EPOCHS,
+        "max_adaptive_local_epochs": MAX_ADAPTIVE_LOCAL_EPOCHS,
+        "fedprox_mu": FEDPROX_MU,
+        "pseudo_label_weight_default": DEFAULT_PSEUDO_LABEL_WEIGHT,
+        "pseudo_label_confidence_default": DEFAULT_PSEUDO_LABEL_CONFIDENCE,
+        "alert_publish_limit": ALERT_PUBLISH_LIMIT,
+        "auto_alert_on_round_complete": AUTO_ALERT_ON_ROUND_COMPLETE,
     }
+
+
+async def _derive_local_training_plan(state: LocalAgentState) -> Dict[str, object]:
+    engine = get_reasoning_engine(str(state.get("agent_id", agent_status["agent_id"])), "local_agent")
+    decision = await engine.reason_local_training_plan(_build_local_plan_context(state))
+    plan = decision.model_dump()
+    plan["reasoning_trace"] = list(decision.reasoning_steps)
+    return plan
 
 # --- Node Functions ---
 async def check_data_availability(state: LocalAgentState):
@@ -334,8 +260,8 @@ async def fetch_latest_global_model(state: LocalAgentState):
 
 
 async def plan_local_execution(state: LocalAgentState):
-    logger.info("Planning adaptive local execution strategy...")
-    plan = _derive_local_training_plan(state)
+    logger.info("Planning adaptive local execution strategy with autonomous reasoning engine...")
+    plan = await _derive_local_training_plan(state)
     state["adaptive_plan"] = plan
     state["reasoning_trace"] = list(plan.get("reasoning_trace", []))
     state["noise_multiplier"] = float(plan.get("noise_multiplier", state.get("noise_multiplier", DP_NOISE_MULTIPLIER)))
@@ -555,6 +481,7 @@ agent_status: Dict[str, object] = {
     "last_participation_decision": None,
     "last_adaptive_plan": {},
     "last_reasoning_trace": [],
+    "reasoning_provider": "expert-inference",
 }
 
 def _coerce_numeric_metrics(payload: Optional[Dict[str, object]]) -> Dict[str, float]:
@@ -710,7 +637,30 @@ async def evaluate_participation_constraints(agent_id: str) -> ParticipationDeci
                 checks,
             )
 
-    return ParticipationDecision(allowed=True, reason="Participation approved", checks=checks)
+    engine = get_reasoning_engine(agent_id, "local_agent")
+    reasoning = await engine.reason_participation(
+        {
+            "agent_id": agent_id,
+            "hard_constraints_passed": True,
+            "hard_constraint_reason": "Participation approved",
+            "checks": checks,
+            "last_metrics": agent_status.get("last_metrics", {}),
+            "last_inference_summary": agent_status.get("last_inference_summary", {}),
+        }
+    )
+    checks["autonomous_reasoning"] = reasoning.model_dump()
+    agent_status["reasoning_provider"] = reasoning.provider
+    if not reasoning.participate:
+        return _reject_participation(
+            reasoning.rationale_summary or "Participation rejected by autonomous reasoning engine",
+            checks,
+        )
+
+    return ParticipationDecision(
+        allowed=True,
+        reason=reasoning.rationale_summary or "Participation approved by autonomous reasoning engine",
+        checks=checks,
+    )
 
 def _build_alerts_from_predictions(agent_id: str, predictions: List[AgentInferencePrediction]) -> List[Dict[str, object]]:
     alerts: List[Dict[str, object]] = []

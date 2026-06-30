@@ -58,6 +58,8 @@ from shared.schemas.models import (
     FraudPatternProposal,
     ConsensusVote,
 )
+from shared.reasoning.engine import get_reasoning_engine
+from shared.reasoning.inference_rules import infer_aggregation_strategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -218,6 +220,8 @@ class AgentState(TypedDict):
     selected_strategy: str
     current_step: str
     negotiated_weights: Optional[Dict[str, float]]
+    reasoning_trace: List[str]
+    reasoning_provider: str
 
 
 def _submission_to_payload(update: UpdateSubmission) -> Dict[str, Any]:
@@ -647,22 +651,44 @@ def _screen_model_delta_anomalies(
     return screened_updates, rejected_updates
 
 def _select_aggregation_strategy(valid_updates: List[UpdateSubmission], policies: Dict[str, Any], current_strategy: str) -> str:
-    if not valid_updates:
-        return current_strategy
+    payload = [
+        {
+            "agent_id": update.agent_id,
+            "sample_size": update.sample_size,
+            "metrics": update.metrics,
+        }
+        for update in valid_updates
+    ]
+    strategy, _steps, _confidence = infer_aggregation_strategy(
+        payload,
+        policies,
+        current_strategy,
+        SUPPORTED_AGGREGATION_STRATEGIES,
+    )
+    return strategy
 
-    avg_accuracy = sum(float((update.metrics or {}).get("accuracy", 0.0)) for update in valid_updates) / len(valid_updates)
-    rejected_ratio = 0.0
-    total_updates = len(valid_updates)
-    if total_updates > 0:
-        low_quality_count = sum(1 for update in valid_updates if float((update.metrics or {}).get("accuracy", 0.0)) < float(policies.get("low_performance_accuracy", 0.0)))
-        rejected_ratio = low_quality_count / total_updates
-    fallback = str(policies.get("fallback_aggregation_strategy", current_strategy))
-    if avg_accuracy < float(policies.get("low_performance_accuracy", 0.0)) and fallback in SUPPORTED_AGGREGATION_STRATEGIES:
-        return fallback
-    adaptive_strategy = str(policies.get("adaptive_strategy_on_rejection", fallback))
-    if rejected_ratio >= float(policies.get("adaptive_rejected_update_ratio", 1.0)) and adaptive_strategy in SUPPORTED_AGGREGATION_STRATEGIES:
-        return adaptive_strategy
-    return current_strategy
+
+async def _select_aggregation_strategy_with_reasoning(
+    valid_updates: List[UpdateSubmission],
+    policies: Dict[str, Any],
+    current_strategy: str,
+) -> Tuple[str, List[str], str]:
+    payload = [
+        {
+            "agent_id": update.agent_id,
+            "sample_size": update.sample_size,
+            "metrics": update.metrics,
+        }
+        for update in valid_updates
+    ]
+    engine = get_reasoning_engine("agentic-coordinator", "coordinator")
+    decision = await engine.reason_aggregation_strategy(
+        payload,
+        policies,
+        current_strategy,
+        SUPPORTED_AGGREGATION_STRATEGIES,
+    )
+    return decision.aggregation_strategy, decision.reasoning_steps, decision.provider
 
 def _update_agent_profiles(valid_updates: List[UpdateSubmission], rejected_updates: List[Dict[str, Any]]) -> None:
     for update in valid_updates:
@@ -826,6 +852,16 @@ async def select_agents(state: AgentState):
                 logger.info("Skipping agent %s because runtime readiness check returned %s", agent_url, runtime_reason)
                 continue
             selected_agents.append(agent_url)
+
+    engine = get_reasoning_engine("agentic-coordinator", "coordinator")
+    round_decision = await engine.reason_coordinator_round(selected_agents, policies, agent_profiles)
+    if round_decision.selected_agent_ids:
+        selected_agents = [agent for agent in round_decision.selected_agent_ids if agent in configured_agents]
+    state["reasoning_trace"] = list(round_decision.reasoning_steps)
+    state["reasoning_provider"] = round_decision.provider
+    strategy_hint = round_decision.aggregation_strategy_hint
+    if strategy_hint in SUPPORTED_AGGREGATION_STRATEGIES:
+        state["selected_strategy"] = strategy_hint
 
     state['active_agents'] = selected_agents
     round_expected_agents[state["round_id"]] = list(selected_agents)
@@ -1026,7 +1062,14 @@ async def aggregate_results(state: AgentState):
     valid_updates, rejected_updates = _validate_updates(updates, policies)
     state["valid_updates"] = valid_updates
     state["rejected_updates"] = rejected_updates
-    state["selected_strategy"] = _select_aggregation_strategy(valid_updates, policies, state.get("selected_strategy", "FedAvg"))
+    selected_strategy, strategy_reasoning, reasoning_provider = await _select_aggregation_strategy_with_reasoning(
+        valid_updates,
+        policies,
+        state.get("selected_strategy", "FedAvg"),
+    )
+    state["selected_strategy"] = selected_strategy
+    state["reasoning_provider"] = reasoning_provider
+    state["reasoning_trace"] = list(state.get("reasoning_trace", [])) + list(strategy_reasoning)
     _update_agent_profiles(valid_updates, rejected_updates)
 
     if len(valid_updates) < int(policies.get("min_agents_per_round", 1)):
@@ -1240,7 +1283,9 @@ async def start_round(round_id: str):
         "policies": {},
         "selected_strategy": "FedAvg",
         "current_step": "init",
-        "negotiated_weights": None
+        "negotiated_weights": None,
+        "reasoning_trace": [],
+        "reasoning_provider": "expert-inference",
     }
     _persist_workflow_state(round_id, initial_state)
     

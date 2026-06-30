@@ -12,7 +12,8 @@ dependencies = [
     "langchain>=0.0.200",
     "langgraph>=0.0.10",
     "confluent-kafka>=2.1.0",
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+    "httpx>=0.24.0"
 ]
 
 [build-system]
