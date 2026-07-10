@@ -67,10 +67,21 @@ def _append_structural_features(x: torch.Tensor, edge_index: torch.Tensor) -> to
 
     src = edge_index[0]
     dst = edge_index[1]
-    out_degree = torch.bincount(src, minlength=num_nodes).float()
-    in_degree = torch.bincount(dst, minlength=num_nodes).float()
+    out_degree = torch.bincount(src, minlength=num_nodes).float().to(x.device)
+    in_degree = torch.bincount(dst, minlength=num_nodes).float().to(x.device)
     total_degree = in_degree + out_degree
     degree_scale = torch.clamp(total_degree.max(), min=1.0)
+
+    # Neighborhood average degree centrality
+    neigh_deg = total_degree[src]
+    sum_neigh_deg = torch.zeros(num_nodes, device=x.device)
+    sum_neigh_deg.index_add_(0, dst, neigh_deg)
+    avg_neigh_deg = sum_neigh_deg / torch.clamp(total_degree, min=1.0)
+    avg_neigh_scale = torch.clamp(avg_neigh_deg.max(), min=1.0)
+
+    # In/Out degree ratio
+    in_out_ratio = in_degree / torch.clamp(out_degree, min=1.0)
+    ratio_scale = torch.clamp(in_out_ratio.max(), min=1.0)
 
     structural = torch.stack(
         [
@@ -78,6 +89,8 @@ def _append_structural_features(x: torch.Tensor, edge_index: torch.Tensor) -> to
             out_degree / degree_scale,
             total_degree / degree_scale,
             (out_degree - in_degree).abs() / degree_scale,
+            avg_neigh_deg / avg_neigh_scale,
+            in_out_ratio / ratio_scale,
         ],
         dim=1,
     )
@@ -104,6 +117,7 @@ class TrainRequest(BaseModel):
     fedprox_mu: Optional[float] = None
     pseudo_label_weight: Optional[float] = None
     pseudo_label_confidence: Optional[float] = None
+    use_label_propagation: Optional[bool] = None
 
 class TrainResponse(BaseModel):
     """
@@ -455,12 +469,14 @@ async def trigger_training(request: TrainRequest) -> TrainResponse:
             else DEFAULT_PSEUDO_LABEL_CONFIDENCE
         )
         sparse_label_mode = bool(getattr(data, "sparse_label_mode", False))
+        use_lp = bool(request.use_label_propagation) if request.use_label_propagation is not None else sparse_label_mode
         trainer.configure_training(
             strategy=training_strategy,
             fedprox_mu=fedprox_mu,
             sparse_label_mode=sparse_label_mode,
             pseudo_label_weight=pseudo_label_weight,
             pseudo_label_confidence=pseudo_label_confidence,
+            use_label_propagation=use_lp,
         )
         if request.global_weights:
             trainer.set_model_weights(base64.b64decode(request.global_weights))
@@ -468,6 +484,11 @@ async def trigger_training(request: TrainRequest) -> TrainResponse:
             trainer.capture_proximal_reference()
         else:
             trainer.clear_proximal_reference()
+
+        # Run Label Propagation prior to local training if requested
+        if trainer.use_label_propagation:
+            newly_labeled = trainer.run_label_propagation(data)
+            logger.info(f"Label Propagation executed. Assigned labels to {newly_labeled} nodes.")
 
         epochs = max(1, int(request.epochs))
         last_loss = None

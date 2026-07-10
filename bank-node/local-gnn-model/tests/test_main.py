@@ -69,6 +69,7 @@ class FakeTrainer:
         self.clear_calls = 0
         self.last_base_loss = 0.33
         self.last_proximal_penalty = 0.09
+        self.use_label_propagation = False
 
     def set_model_weights(self, payload):
         self.set_weights_calls.append(payload)
@@ -80,7 +81,9 @@ class FakeTrainer:
         sparse_label_mode=False,
         pseudo_label_weight=0.0,
         pseudo_label_confidence=0.9,
+        use_label_propagation=False,
     ):
+        self.use_label_propagation = use_label_propagation
         self.configure_calls.append(
             {
                 "strategy": strategy,
@@ -96,6 +99,9 @@ class FakeTrainer:
 
     def clear_proximal_reference(self):
         self.clear_calls += 1
+
+    def run_label_propagation(self, _data):
+        return 0
 
     def train_epoch(self, _data):
         return 0.42

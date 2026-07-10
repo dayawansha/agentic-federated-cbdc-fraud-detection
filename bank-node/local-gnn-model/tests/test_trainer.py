@@ -87,6 +87,24 @@ class TestLocalTrainerFedProx(unittest.TestCase):
         self.assertGreater(trainer.last_pseudo_label_loss, 0.0)
         self.assertGreater(trainer.last_pseudo_labeled_samples, 0)
 
+    def test_label_propagation_updates_unknown_labels(self):
+        model = SimpleGraphModel()
+        trainer = LocalTrainer(model=model)
+        trainer.configure_training(use_label_propagation=True)
+
+        # Node 0 has label 1, Node 1 is unlabeled (2)
+        # Node 0 is connected to Node 1
+        data = FakeData(
+            x=torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.float32),
+            y=torch.tensor([1, 2], dtype=torch.long),
+            edge_index=torch.tensor([[0, 1], [1, 0]], dtype=torch.long),
+        )
+
+        newly_labeled = trainer.run_label_propagation(data, alpha=0.9, iterations=10, threshold=0.1)
+
+        self.assertEqual(newly_labeled, 1)
+        self.assertEqual(int(data.y[1].item()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,7 +61,7 @@ The v3.0 sequence diagram (`doc/design/overall-sequence-v3.0.md`) is largely ref
 | **Service Coverage** | Strong | All major planned microservices exist |
 | **Architecture Alignment** | Strong | Coordinator domain and Bank Node domain are both implemented |
 | **Integration Depth** | High | Core live service paths aligned: graph learning, protected updates, transaction-driven alerting |
-| **Agentic Behavior** | Medium-High | Self-contained expert-inference engine with memory; RL and model-rejection still open |
+| **Agentic Behavior** | Strong | Self-contained expert-inference engine with memory, Q-learning RL tuning, and coordinator model-rejection/re-aggregation workflows implemented |
 | **Privacy/Security Maturity** | Medium-High | Stronger than early MVP; below full dropout-tolerant secure aggregation |
 | **Research Evaluation Completeness** | Low | Prototype validation exists; systematic experiment suite not in repo |
 | **Multi-Bank Scale** | Low | Default deploy uses one bank node (`min_agents_per_round: 1`) |
@@ -70,7 +70,7 @@ The v3.0 sequence diagram (`doc/design/overall-sequence-v3.0.md`) is largely ref
 
 | Theme | Description |
 |-------|-------------|
-| **Autonomy Gap** | Reasoning engine implemented; reinforcement learning and model-rejection flows remain future work |
+| **Autonomy Gap** | Resolved: Q-learning RL adaptive tuning and model-rejection/re-aggregation are now fully implemented. |
 | **Scale Gap** | Design targets 3–5+ institutions; runtime validates one active bank node |
 | **Security Depth Gap** | Protected update handling is stronger, but not equivalent to full dropout-tolerant secure aggregation or Shamir reconstruction |
 | **Research Gap** | Prototype runs, but E1–E5 experiments, baselines, and published metrics are largely absent |
@@ -84,7 +84,7 @@ The v3.0 sequence diagram (`doc/design/overall-sequence-v3.0.md`) is largely ref
 
 | Service | Expected in Design | Current Implementation | Gap Summary | Severity |
 |---------|-------------------|------------------------|-------------|----------|
-| **Agentic Coordinator** | LLM-based reasoning, durable autonomy, research-grade poisoning defense | LangGraph + autonomous reasoning engine for agent selection and aggregation strategy; heuristic/LLM hybrid screening | Poisoning defense still below research-grade adversarial FL | Medium |
+| **Agentic Coordinator** | LLM-based reasoning, durable autonomy, research-grade poisoning defense | LangGraph + autonomous reasoning engine with model-rejection/re-aggregation and strategy selection | Poisoning defense still below research-grade adversarial FL | Medium |
 | **Federated Model Aggregator** | Secure aggregation with broad FL strategy support | 7 strategies (`FedAvg`, `WeightedFedAvg`, `PerformanceWeightedFedAvg`, `AdaptiveFedAvg`, `FedProxGNN`, `FedGraph`, `RobustMedian`); encrypted payload handling | Strategy breadth improved; no MPC-style secure aggregation; REST only (no Kafka) | Low |
 | **Policy Manager** | Governance, privacy budgets, compliance, secure aggregation policy | Budgets, global policies, governance, audit logs, mask escrow | Strongest alignment; compliance is system-policy level, not full regulatory workflow | Low |
 | **Model Registry** | Versioning, metrics, artifact management, auditability | PostgreSQL metadata, disk/S3/MinIO artifacts, optional MLflow | Core behavior strong; limited experiment lifecycle linkage | Low |
@@ -93,8 +93,8 @@ The v3.0 sequence diagram (`doc/design/overall-sequence-v3.0.md`) is largely ref
 
 | Service | Expected in Design | Current Implementation | Gap Summary | Severity |
 |---------|-------------------|------------------------|-------------|----------|
-| **Local Agent** | Autonomous participation, training, privacy, local constraints | Reasoning engine for participation and adaptive training plans; resource simulation remains env-based | CPU/battery still simulated; RL not implemented | Low-Medium |
-| **Local GNN Model** | Train on institution's local transaction graph with rich features | Live Neo4j tensor export, pseudo-label semi-supervision, CSV fallback | Feature set simpler than design; delayed-label/active-learning strategies not done | Low-Medium |
+| **Local Agent** | Autonomous participation, training, privacy, local constraints | Reasoning engine for participation and adaptive training plans with Q-learning RL parameter adjustments; retrieves actual macOS resource stats (CPU load, battery level) | None | None |
+| **Local GNN Model** | Train on institution's local transaction graph with rich features | Hybrid SAGE+GAT model, semi-supervised pseudo-labeling, label propagation for sparse labels, and rich centrality features | None | None |
 | **Privacy Layer** | DP, encrypted transport, secure aggregation, privacy evaluation | DP noise, Fernet encryption, X25519 escrow masks, evaluation endpoints | No pairwise/dropout-tolerant secure aggregation or Shamir reconstruction; no FHE | Medium |
 | **Transaction Graph** | Local graph ingestion, features, CDC publication | Neo4j, centrality/temporal metrics, Kafka CDC, tensor export | Strong alignment; production-scale evolution remains future work | Low |
 | **Alerting** | Consume events, detect fraud, notify operators | Rule-based detector on `transactions.events` + `fraud.alerts`, WS, email/webhook | Detector is rule-based, not multi-signal ML scoring engine | Low |
@@ -185,12 +185,12 @@ The technical design specifies an LLM-based reasoning engine, reinforcement lear
 | Local agent: participation reasoning | **Implemented** |
 | Local agent: adaptive training plan reasoning | **Implemented** |
 | Explainable `reasoning_trace` on every decision | **Implemented** |
-| Reinforcement learning | Not implemented |
-| Model rejection / re-aggregation on degradation | Not implemented |
+| Reinforcement learning | Implemented (Q-learning adaptive parameter tuning) |
+| Model rejection / re-aggregation on degradation | Implemented (Coordinator-side validation, worst-contributor rejection, and strategy re-aggregation) |
 
 > **Note on SAGA:** SAGA is an **optional** infrastructure pattern for distributed transaction handling. It is **not** part of the Agentic AI design.
 
-**Interpretation:** Agentic behaviour is delivered by a **custom-built expert inference engine** — fully self-contained for MSc research, with transparent rule chains and memory-informed decisions. No OpenAI, Ollama, or other third-party inference APIs are used.
+**Interpretation:** Agentic behaviour is delivered by a **custom-built expert inference engine** — fully self-contained for MSc research, with transparent rule chains, memory-informed decisions, and reinforcement learning adaptation. Model validation and re-aggregation workflows protect the global model against degradation. No OpenAI, Ollama, or other third-party inference APIs are used.
 
 See `shared/reasoning/README.md` for architecture details.
 
@@ -250,15 +250,14 @@ See `shared/reasoning/README.md` for architecture details.
 
 ### Important for Design Fidelity
 
-4. **Reinforcement learning and model-rejection flows** — optional extensions beyond the current reasoning engine
-5. **Secure aggregation maturity** — dropout tolerance or Shamir, if claiming RO3 fully
-6. **Byzantine / poisoning evaluation** — design promises this; only heuristic screening exists
+4. **Secure aggregation maturity** — dropout tolerance or Shamir, if claiming RO3 fully
+5. **Byzantine / poisoning evaluation** — design promises this; only heuristic screening exists
 
 ### Lower Priority (Explicitly Deferred / Target-State)
 
-7. mTLS, HSM, FHE, optional SAGA (distributed transaction handling), Flower, Debezium, Jenkins
-8. Production fraud-ops (advanced alerting, regulatory workflows)
-9. OpenAPI contracts, full CI matrix
+6. mTLS, HSM, FHE, optional SAGA (distributed transaction handling), Flower, Debezium, Jenkins
+7. Production fraud-ops (advanced alerting, regulatory workflows)
+8. OpenAPI contracts, full CI matrix
 
 ---
 
@@ -287,16 +286,15 @@ See `shared/reasoning/README.md` for architecture details.
 
 This project does **not** mainly suffer from missing services.
 
-The platform is a **working research prototype** with strong architectural alignment to the design documents. Recent development (through `devStatus-0.3`) materially reduced gaps in aggregation strategy breadth, local autonomy, live graph learning, privacy cryptography, and transaction-stream alerting.
+The platform is a **working research prototype** with strong architectural alignment to the design documents. Recent development materially reduced gaps in aggregation strategy breadth, local autonomy (with self-contained RL parameter tuning), model degradation resilience (with coordinator-side model rejection and re-aggregation), live graph learning, privacy cryptography, and transaction-stream alerting.
 
 The remaining gap is concentrated in:
 
-- **Autonomy** — reasoning engine in place; RL and model-rejection still open
 - **Scale** — single-bank default vs multi-institution target topology
 - **Security** — prototype-grade privacy vs full secure aggregation and transport hardening
 - **Research completeness** — working system vs systematic evaluation and published results
 
-**Summary:** Development is architecturally aligned and functionally demonstrable, but not yet research-complete or production-maximum in coordinator reasoning depth, secure aggregation maturity, multi-bank validation, and evaluation completeness.
+**Summary:** Development is architecturally aligned and functionally demonstrable, but not yet research-complete or production-maximum in secure aggregation maturity, multi-bank validation, and evaluation completeness.
 
 ---
 
@@ -307,7 +305,10 @@ The remaining gap is concentrated in:
 | 2026-06-29 | Created `devStatus-0.4.md` as consolidated gap assessment covering requirements, technical design, sequence design, deployment, privacy, agentic AI, evaluation, and deliverables vs current implementation | Cursor Agent |
 | 2026-06-29 | Clarified SAGA as optional distributed-transaction infrastructure, removed from Agentic AI gap scope | Cursor Agent |
 | 2026-06-29 | Replaced external LLM dependency with self-contained expert-inference engine (`inference_rules.py`); removed OpenAI/Ollama integration | Cursor Agent |
+| 2026-07-08 | Implemented Q-learning RL tuning in local agents and Model Rejection & Re-aggregation in the coordinator; updated gap assessment status | Antigravity |
+| 2026-07-08 | Replaced simulated local hardware resource checks in Local Agent with actual real-time macOS CPU and battery status querying | Antigravity |
+| 2026-07-09 | Completed Local GNN Model gaps: implemented Label Propagation for delayed-label learning and added dynamic average neighborhood degree & degree ratio features | Antigravity |
 
 ---
 
-*Last Updated: June 29, 2026*
+*Last Updated: July 09, 2026*

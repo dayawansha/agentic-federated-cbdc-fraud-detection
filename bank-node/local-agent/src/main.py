@@ -32,10 +32,12 @@ import base64
 import hashlib
 import json
 import uuid
+import subprocess
+import re
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict, Tuple
 from langgraph.graph import StateGraph, END
 import httpx
 
@@ -195,6 +197,9 @@ def _normalize_inference_prediction(prediction: object) -> Dict[str, object]:
 
 
 def _build_local_plan_context(state: LocalAgentState) -> Dict[str, object]:
+    # Non-Python explanation: This helper function gathers all the necessary information
+    # about the agent's current state and environment variables, packaging them into
+    # a standard dictionary (key-value list) so that the reasoning engine can read it.
     checks = state.get("participation_checks", {}) or {}
     return {
         "agent_id": state.get("agent_id", str(agent_status.get("agent_id", "local-agent"))),
@@ -212,6 +217,8 @@ def _build_local_plan_context(state: LocalAgentState) -> Dict[str, object]:
         "pseudo_label_confidence_default": DEFAULT_PSEUDO_LABEL_CONFIDENCE,
         "alert_publish_limit": ALERT_PUBLISH_LIMIT,
         "auto_alert_on_round_complete": AUTO_ALERT_ON_ROUND_COMPLETE,
+        # Forward the rl_enabled setting (so we can turn off Reinforcement Learning during testing if needed)
+        "rl_enabled": state.get("rl_enabled", True),
     }
 
 
@@ -523,7 +530,45 @@ def _reject_participation(reason: str, checks: Dict[str, object]) -> Participati
     return ParticipationDecision(allowed=False, reason=reason, checks=checks)
 
 
+def _get_resource_metrics() -> Tuple[int, int]:
+    if SIMULATE_LOW_RESOURCES:
+        return SIMULATE_CPU_LOAD, SIMULATE_BATTERY_LEVEL
+        
+    # Determine cpu load
+    cpu_load = SIMULATE_CPU_LOAD
+    try:
+        import psutil
+        cpu_load = int(psutil.cpu_percent())
+    except Exception:
+        try:
+            cpu_load = int(os.getloadavg()[0] * 100 / os.cpu_count())
+        except Exception:
+            pass
+
+    # Determine battery level
+    battery_level = SIMULATE_BATTERY_LEVEL
+    try:
+        import psutil
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            battery_level = int(battery.percent)
+    except Exception:
+        pass
+
+    if battery_level == SIMULATE_BATTERY_LEVEL:
+        try:
+            output = subprocess.check_output(["pmset", "-g", "batt"]).decode("utf-8")
+            match = re.search(r"(\d+)%", output)
+            if match:
+                battery_level = int(match.group(1))
+        except Exception:
+            pass
+
+    return cpu_load, battery_level
+
+
 async def evaluate_participation_constraints(agent_id: str) -> ParticipationDecision:
+    cpu_load, battery_level = _get_resource_metrics()
     checks: Dict[str, object] = {
         "privacy_budget": {
             "enforced": ENFORCE_PRIVACY_BUDGET,
@@ -531,9 +576,9 @@ async def evaluate_participation_constraints(agent_id: str) -> ParticipationDeci
             "projected_round_delta_spend": PROJECTED_ROUND_DELTA_SPEND,
         },
         "resource_guardrails": {
-            "enabled": SIMULATE_LOW_RESOURCES,
-            "cpu_load": SIMULATE_CPU_LOAD,
-            "battery_level": SIMULATE_BATTERY_LEVEL,
+            "enabled": True,
+            "cpu_load": cpu_load,
+            "battery_level": battery_level,
             "cpu_threshold": RESOURCE_CPU_REJECTION_THRESHOLD,
             "battery_threshold": RESOURCE_BATTERY_REJECTION_THRESHOLD,
         },
@@ -627,13 +672,15 @@ async def evaluate_participation_constraints(agent_id: str) -> ParticipationDeci
                 if REQUIRE_POLICY_MANAGER_FOR_PARTICIPATION:
                     return _reject_participation("Participation rejected: Global policy check unavailable", checks)
 
-    if SIMULATE_LOW_RESOURCES:
+    # Enforce real resource constraints if enabled (defaulting to True)
+    enforce_resources = os.getenv("ENFORCE_RESOURCE_CONSTRAINTS", "true").strip().lower() not in {"0", "false", "no", "off"}
+    if SIMULATE_LOW_RESOURCES or enforce_resources:
         if (
-            SIMULATE_CPU_LOAD > RESOURCE_CPU_REJECTION_THRESHOLD
-            or SIMULATE_BATTERY_LEVEL < RESOURCE_BATTERY_REJECTION_THRESHOLD
+            cpu_load > RESOURCE_CPU_REJECTION_THRESHOLD
+            or battery_level < RESOURCE_BATTERY_REJECTION_THRESHOLD
         ):
             return _reject_participation(
-                "Participation rejected: Node resources exhausted (simulated CPU/Battery constraint)",
+                f"Participation rejected: Node resources exhausted (CPU: {cpu_load}%, Battery: {battery_level}%)",
                 checks,
             )
 

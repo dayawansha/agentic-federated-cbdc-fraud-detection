@@ -1062,6 +1062,8 @@ async def aggregate_results(state: AgentState):
     valid_updates, rejected_updates = _validate_updates(updates, policies)
     state["valid_updates"] = valid_updates
     state["rejected_updates"] = rejected_updates
+    
+    # Track initial strategy and selection
     selected_strategy, strategy_reasoning, reasoning_provider = await _select_aggregation_strategy_with_reasoning(
         valid_updates,
         policies,
@@ -1072,93 +1074,188 @@ async def aggregate_results(state: AgentState):
     state["reasoning_trace"] = list(state.get("reasoning_trace", [])) + list(strategy_reasoning)
     _update_agent_profiles(valid_updates, rejected_updates)
 
-    if len(valid_updates) < int(policies.get("min_agents_per_round", 1)):
-        state["aggregation_complete"] = False
-        state["metrics"] = {
-            "accepted_updates": float(len(valid_updates)),
-            "rejected_updates": float(len(rejected_updates)),
-        }
-        state["current_step"] = "round_complete"
-        _persist_workflow_state(round_id, state)
-        return state
-
+    max_aggregation_attempts = 2
+    attempt = 0
+    final_aggregated_weights = ""
+    
     async with httpx.AsyncClient() as client:
-        negotiated = state.get("negotiated_weights") or {}
-        global_reference_weights = None
-        if state["selected_strategy"] == "FedProxGNN":
-            try:
-                latest_model_response = await client.get(f"{MODEL_REGISTRY_URL}/models/latest/weights", timeout=60.0)
-                if latest_model_response.status_code == 200:
-                    latest_model_payload = latest_model_response.json()
-                    global_reference_weights = latest_model_payload.get("weights")
-            except Exception as exc:
-                logger.warning("FedProxGNN reference model fetch failed, falling back to peer-centroid reference: %s", exc)
-        agg_payload = {
-            "round_id": round_id,
-            "updates": [
-                {
-                    "agent_id": u.agent_id,
-                    "weights": u.weights,
-                    "encrypted_weights": u.encrypted_weights,
-                    "sample_size": u.sample_size,
-                    "metrics": u.metrics,
-                    "privacy_applied": u.privacy_applied,
-                    "encryption_applied": u.encryption_applied,
-                    "protected_payload_sha256": u.protected_payload_sha256,
-                    "encrypted_payload_sha256": u.encrypted_payload_sha256,
-                    "reliability_score": _agent_reliability(u.agent_id),
-                    "negotiated_weight": negotiated.get(u.agent_id),
+        while attempt < max_aggregation_attempts:
+            if len(valid_updates) < int(policies.get("min_agents_per_round", 1)):
+                logger.warning(f"Not enough valid updates left for aggregation ({len(valid_updates)} valid updates)")
+                state["aggregation_complete"] = False
+                state["metrics"] = {
+                    "accepted_updates": float(len(valid_updates)),
+                    "rejected_updates": float(len(rejected_updates)),
                 }
-                for u in valid_updates
-            ],
-            "strategy": state["selected_strategy"],
-            "noise_multiplier": 0.0,
-            "global_reference_weights": global_reference_weights,
-        }
-    try:
-        agg_resp = await client.post(f"{FEDERATED_MODEL_AGGREGATOR_URL}/aggregate", json=agg_payload, timeout=180.0)
-        if agg_resp.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"Aggregation failed: {agg_resp.text}")
+                break
 
-        agg_data = agg_resp.json()
-        aggregate_mask = await _fetch_aggregate_mask(round_id, valid_updates, state["selected_strategy"])
-        final_aggregated_weights = _unmask_aggregated_weights(str(agg_data.get("aggregated_weights", "")), aggregate_mask)
-        state["aggregation_complete"] = bool(agg_data.get("success", False))
-        state["metrics"] = agg_data.get("global_metrics", {}) or {}
-        state["metrics"]["accepted_updates"] = float(len(valid_updates))
-        state["metrics"]["rejected_updates"] = float(len(rejected_updates))
+            negotiated = state.get("negotiated_weights") or {}
+            global_reference_weights = None
+            if state["selected_strategy"] == "FedProxGNN":
+                try:
+                    latest_model_response = await client.get(f"{MODEL_REGISTRY_URL}/models/latest/weights", timeout=60.0)
+                    if latest_model_response.status_code == 200:
+                        latest_model_payload = latest_model_response.json()
+                        global_reference_weights = latest_model_payload.get("weights")
+                except Exception as exc:
+                    logger.warning("FedProxGNN reference model fetch failed, falling back to peer-centroid reference: %s", exc)
 
-        try:
-            reg_response = await client.post(
-                f"{MODEL_REGISTRY_URL}/models/register",
-                json={
-                    "metrics": state["metrics"],
-                    "artifact_path": "",
-                    "is_global": True,
-                    "weights": final_aggregated_weights,
-                },
-                timeout=60.0,
-            )
-            if reg_response.status_code == 200:
-                reg_payload = reg_response.json()
-                registered_version_id = reg_payload.get("version_id")
-                state["metrics"]["registered_version_id"] = 1.0  # sentinel — real id stored below
-                state["metrics"]["registry_registered"] = 1.0
-                logger.info(
-                    "Successfully registered aggregated model with version_id=%s for round %s",
-                    registered_version_id,
+            agg_payload = {
+                "round_id": round_id,
+                "updates": [
+                    {
+                        "agent_id": u.agent_id,
+                        "weights": u.weights,
+                        "encrypted_weights": u.encrypted_weights,
+                        "sample_size": u.sample_size,
+                        "metrics": u.metrics,
+                        "privacy_applied": u.privacy_applied,
+                        "encryption_applied": u.encryption_applied,
+                        "protected_payload_sha256": u.protected_payload_sha256,
+                        "encrypted_payload_sha256": u.encrypted_payload_sha256,
+                        "reliability_score": _agent_reliability(u.agent_id),
+                        "negotiated_weight": negotiated.get(u.agent_id),
+                    }
+                    for u in valid_updates
+                ],
+                "strategy": state["selected_strategy"],
+                "noise_multiplier": 0.0,
+                "global_reference_weights": global_reference_weights,
+            }
+
+            try:
+                # Send the packed weights and metadata to the Federated Model Aggregator microservice
+                agg_resp = await client.post(f"{FEDERATED_MODEL_AGGREGATOR_URL}/aggregate", json=agg_payload, timeout=180.0)
+                if agg_resp.status_code != 200:
+                    raise HTTPException(status_code=500, detail=f"Aggregation failed: {agg_resp.text}")
+
+                # Read the response JSON dictionary from the aggregator
+                agg_data = agg_resp.json()
+                
+                # Retrieve the shared secret mask to cancel out the Differential Privacy masks added by banks
+                aggregate_mask = await _fetch_aggregate_mask(round_id, valid_updates, state["selected_strategy"])
+                
+                # Decrypt/Unmask the aggregated weights using our mask cancellation utility
+                final_aggregated_weights = _unmask_aggregated_weights(str(agg_data.get("aggregated_weights", "")), aggregate_mask)
+                state["aggregation_complete"] = bool(agg_data.get("success", False))
+                
+                # Save global round evaluation metrics (accuracy, loss, etc.)
+                state["metrics"] = agg_data.get("global_metrics", {}) or {}
+                state["metrics"]["accepted_updates"] = float(len(valid_updates))
+                state["metrics"]["rejected_updates"] = float(len(rejected_updates))
+
+                # ==========================================================
+                # --- Model Rejection Check ---
+                # ==========================================================
+                # Non-Python/Non-ML explanation:
+                # - After aggregating the weights from all banks, we test the new global model.
+                # - If the new global model's accuracy is worse than the threshold (e.g. 80%) or
+                #   has dropped significantly (by more than 8%) compared to the previous round,
+                #   we suspect one or more bank nodes sent poisoned, bad, or corrupt data.
+                # - If this happens, we:
+                #   1. Identify the bank node that had the worst accuracy in this round.
+                #   2. Reject and remove that bank's contributions.
+                #   3. Switch our aggregation algorithm to a robust one (e.g., 'RobustMedian' which ignores outliers).
+                #   4. Try aggregating again with the remaining banks' updates.
+                
+                # Read the minimum allowed accuracy (defaults to 80% if not configured)
+                min_acc = float(policies.get("low_performance_accuracy", 0.8))
+                curr_acc = float(state["metrics"].get("accuracy", 1.0))
+                
+                # Retrieve the previous global model accuracy from the registry to compare and check for drops
+                prev_acc = 1.0
+                try:
+                    prev_resp = await client.get(f"{MODEL_REGISTRY_URL}/models/latest", timeout=15.0)
+                    if prev_resp.status_code == 200:
+                        prev_data = prev_resp.json()
+                        prev_acc = float(prev_data.get("metrics", {}).get("accuracy", 1.0))
+                except Exception:
+                    pass
+
+                # Check if current accuracy is below policy threshold or has dropped by more than 8%
+                if (curr_acc < min_acc or (prev_acc - curr_acc) > 0.08) and len(valid_updates) > int(policies.get("min_agents_per_round", 1)):
+                    # Find the update contribution that had the lowest accuracy score
+                    # 'min' is a Python function that finds the smallest item. 'key' tells it how to compare items.
+                    worst_update = min(valid_updates, key=lambda u: float(u.metrics.get("accuracy", 1.0)))
+                    worst_agent_id = worst_update.agent_id
+                    
+                    logger.warning(
+                        f"Model rejection triggered (attempt {attempt+1}): Global accuracy {curr_acc:.3f} degraded. "
+                        f"Rejecting worst contributor: {worst_agent_id}"
+                    )
+                    
+                    # Filter out (remove) the worst agent from our valid updates list
+                    valid_updates = [u for u in valid_updates if u.agent_id != worst_agent_id]
+                    state["valid_updates"] = valid_updates
+                    
+                    # Append the rejected agent info to our tracking list
+                    rejected_updates.append({"agent_id": worst_agent_id, "reason": "model_degradation_contributor"})
+                    state["rejected_updates"] = rejected_updates
+                    _update_agent_profiles([], [{"agent_id": worst_agent_id, "reason": "model_degradation_contributor"}])
+                    
+                    # Switch to a robust strategy like 'RobustMedian' if supported, otherwise 'PerformanceWeightedFedAvg'
+                    robust_strategy = "RobustMedian" if "RobustMedian" in SUPPORTED_AGGREGATION_STRATEGIES else "PerformanceWeightedFedAvg"
+                    state["selected_strategy"] = robust_strategy
+                    
+                    # Document our autonomous choice in the reasoning trace log
+                    state["reasoning_trace"].append(
+                        f"Model Rejection: Global accuracy {curr_acc:.3f} degraded from previous {prev_acc:.3f} or below threshold {min_acc:.3f}. "
+                        f"Rejected worst contributor {worst_agent_id}. Re-aggregating with {robust_strategy}."
+                    )
+                    attempt += 1
+                    # 'continue' restarts the loop iteration to execute aggregation again with the new settings
+                    continue
+                else:
+                    # Model passed validation or we cannot perform further re-aggregation (minimum agent limit reached)
+                    # 'break' exits the loop immediately
+                    break
+
+            except HTTPException:
+                raise
+            except Exception as agg_exc:
+                logger.error(
+                    "Unexpected error during aggregation for round %s — round marked incomplete: %s",
                     round_id,
+                    agg_exc,
                 )
-            else:
-                logger.warning(
-                    "Model registry registration returned non-200 status %s for round %s: %s",
-                    reg_response.status_code,
-                    round_id,
-                    reg_response.text,
-                )
-        except Exception as e:
-            logger.warning(f"Model registry registration failed: {e}")
+                state["aggregation_complete"] = False
+                state.setdefault("metrics", {})["aggregation_error"] = 1.0
+                break
 
+        # Register final model if aggregation was successful
+        if state.get("aggregation_complete") and final_aggregated_weights:
+            try:
+                reg_response = await client.post(
+                    f"{MODEL_REGISTRY_URL}/models/register",
+                    json={
+                        "metrics": state["metrics"],
+                        "artifact_path": "",
+                        "is_global": True,
+                        "weights": final_aggregated_weights,
+                    },
+                    timeout=60.0,
+                )
+                if reg_response.status_code == 200:
+                    reg_payload = reg_response.json()
+                    registered_version_id = reg_payload.get("version_id")
+                    state["metrics"]["registered_version_id"] = 1.0
+                    state["metrics"]["registry_registered"] = 1.0
+                    logger.info(
+                        "Successfully registered aggregated model with version_id=%s for round %s",
+                        registered_version_id,
+                        round_id,
+                    )
+                else:
+                    logger.warning(
+                        "Model registry registration returned non-200 status %s for round %s: %s",
+                        reg_response.status_code,
+                        round_id,
+                        reg_response.text,
+                    )
+            except Exception as e:
+                logger.warning(f"Model registry registration failed: {e}")
+
+        # Update budget spending policies
         for u in valid_updates:
             try:
                 await client.post(
@@ -1168,17 +1265,6 @@ async def aggregate_results(state: AgentState):
                 )
             except Exception as e:
                 logger.warning(f"Policy budget update failed for {u.agent_id}: {e}")
-
-    except HTTPException:
-        raise
-    except Exception as agg_exc:
-        logger.error(
-            "Unexpected error during aggregation for round %s — round marked incomplete: %s",
-            round_id,
-            agg_exc,
-        )
-        state["aggregation_complete"] = False
-        state.setdefault("metrics", {})["aggregation_error"] = 1.0
 
     state["current_step"] = "round_complete"
     _persist_workflow_state(round_id, state)

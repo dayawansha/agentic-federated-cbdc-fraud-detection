@@ -54,8 +54,8 @@ require_cmd docker
 
 cd "${COMPOSE_DIR}"
 
-echo "Stopping and removing existing Compose containers..."
-docker compose down --remove-orphans --rmi local
+echo "Stopping and removing existing Compose containers and volumes..."
+docker compose down --remove-orphans --rmi local -v
 
 if [[ "${NO_START}" == "true" ]]; then
   echo "Rebuilding full stack without starting containers..."

@@ -270,6 +270,7 @@ class TestLocalAgent(unittest.IsolatedAsyncioTestCase):
         state = {
             "agent_id": "agent-1",
             "round_id": "round-plan",
+            "rl_enabled": False,
             "data_ready": True,
             "global_model_loaded": True,
             "training_complete": False,

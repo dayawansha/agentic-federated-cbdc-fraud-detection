@@ -6,6 +6,9 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
 
   kafka:
     image: confluentinc/cp-kafka:7.3.0
@@ -102,6 +105,7 @@ services:
       dockerfile: central-coordinator/agentic-coordinator/Dockerfile
     ports:
       - "8001:8001"
+    restart: on-failure
     depends_on:
       - redis
       - kafka
@@ -134,6 +138,7 @@ services:
       dockerfile: central-coordinator/policy-manager/Dockerfile
     ports:
       - "8003:8003"
+    restart: on-failure
     depends_on:
       - postgres
     environment:
@@ -151,6 +156,7 @@ services:
       dockerfile: central-coordinator/model-registry/Dockerfile
     ports:
       - "8004:8004"
+    restart: on-failure
     depends_on:
       - postgres
     environment:
@@ -171,6 +177,7 @@ services:
       dockerfile: bank-node/transaction-graph/Dockerfile
     ports:
       - "9004:9004"
+    restart: on-failure
     depends_on:
       - neo4j
       - kafka
@@ -187,6 +194,7 @@ services:
       dockerfile: bank-node/local-gnn-model/Dockerfile
     ports:
       - "9002:9002"
+    restart: on-failure
     depends_on:
       - transaction-graph
     environment:
@@ -198,6 +206,7 @@ services:
       dockerfile: bank-node/privacy-layer/Dockerfile
     ports:
       - "9003:9003"
+    restart: on-failure
     depends_on:
       - policy-manager
     environment:
@@ -210,6 +219,7 @@ services:
       dockerfile: bank-node/local-agent/Dockerfile
     ports:
       - "9001:9001"
+    restart: on-failure
     depends_on:
       - kafka
       - agentic-coordinator
@@ -234,6 +244,7 @@ services:
       dockerfile: bank-node/alerting/Dockerfile
     ports:
       - "9005:9005"
+    restart: on-failure
     depends_on:
       - kafka
       - postgres
@@ -253,6 +264,7 @@ services:
       dockerfile: bank-node/fraud-dashboard/Dockerfile
     ports:
       - "3000:3000"
+    restart: on-failure
     depends_on:
       - kafka-ui
       - redis-insight
@@ -268,3 +280,5 @@ volumes:
   kafka_data:
   neo4j_data:
   redis_insight_data:
+  zookeeper_data:
+  zookeeper_log:
