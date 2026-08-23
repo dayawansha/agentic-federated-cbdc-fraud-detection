@@ -102,8 +102,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mapfile -t APP_DEPLOYMENTS < <(project_app_deployments)
-mapfile -t IMAGES < <(project_tagged_images "${IMAGE_TAG}")
+APP_DEPLOYMENTS=()
+while read -r line; do
+  APP_DEPLOYMENTS+=("$line")
+done < <(project_app_deployments)
+
+IMAGES=()
+while read -r line; do
+  IMAGES+=("$line")
+done < <(project_tagged_images "${IMAGE_TAG}")
 
 require_cmd docker
 require_cmd kubectl

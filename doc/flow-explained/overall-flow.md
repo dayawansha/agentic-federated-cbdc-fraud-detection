@@ -21,6 +21,8 @@ Before diving into the steps, here is an overview of the key components involved
 - **[agentic-coordinator](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/agentic-coordinator) (Port 8001)**: Coordinates global federated learning rounds, peer negotiation, and model validation.
 - **[federated-model-aggregator](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/federated-model-aggregator) (Port 8002)**: Combines models using strategies like FedAvg and RobustMedian.
 - **[policy-manager](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/policy-manager) (Port 8003)**: Governs privacy budget allocations (epsilon/delta limits) and holds Secure Aggregation escrow keys.
+  * **Term**: *Privacy Budget*
+  * **Usage**: Extremely standard. It is the official scientific term used by researchers and companies (like Apple, Google, and Microsoft) to measure and limit data exposure risk in privacy-preserving AI.
 - **[model-registry](file:///Users/dusman/Documents/MSC/research/research-development/agentic-federated-cbdc-fraud-detection/central-coordinator/model-registry) (Port 8004)**: Manages global model checkpoints, versions, metadata, and MLflow logging.
 
 ---

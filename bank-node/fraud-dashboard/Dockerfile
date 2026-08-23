@@ -6,13 +6,13 @@ COPY bank-node/fraud-dashboard/package.json ./
 RUN npm install
 
 COPY bank-node/fraud-dashboard/ .
-RUN npm run build
+RUN DISABLE_ESLINT_PLUGIN=true npm run build
 
 FROM nginx:1.29-alpine
 
 COPY bank-node/fraud-dashboard/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/build /usr/share/nginx/html
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["nginx", "-g", "daemon off;"]

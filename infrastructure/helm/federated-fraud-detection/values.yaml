@@ -21,7 +21,7 @@ global:
     database: "federated_fraud_db"
 
   neo4j:
-    host: "host.minikube.internal"
+    host: "neo4j"
     port: 7687
     user: "neo4j"
     password: "password"
@@ -83,7 +83,7 @@ infrastructure:
   postgres:
     enabled: true
   neo4j:
-    enabled: false
+    enabled: true
   redis:
     enabled: true
   pgadmin:

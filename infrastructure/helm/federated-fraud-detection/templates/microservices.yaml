@@ -66,6 +66,10 @@ spec:
             - name: PRIVACY_KEY_SEED
               value: "federated-fraud-shared-transport-key"
 {{- end }}
+{{- if eq $name "privacyLayer" }}
+            - name: POLICY_MANAGER_URL
+              value: "http://policy-manager:8003"
+{{- end }}
 {{- if eq $name "localAgent" }}
             - name: AGENT_ID
               value: "local-agent"
@@ -77,6 +81,8 @@ spec:
               value: "http://agentic-coordinator:8001"
             - name: MODEL_REGISTRY_URL
               value: "http://model-registry:8004"
+            - name: POLICY_MANAGER_URL
+              value: "http://policy-manager:8003"
 {{- end }}
 {{- if eq $name "modelRegistry" }}
             {{- if $.Values.infrastructure.minio.enabled }}

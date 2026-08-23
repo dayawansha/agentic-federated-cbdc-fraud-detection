@@ -146,7 +146,10 @@ done
 
 trap on_exit EXIT
 
-mapfile -t APP_DEPLOYMENTS < <(project_app_deployments)
+APP_DEPLOYMENTS=()
+while read -r line; do
+  APP_DEPLOYMENTS+=("$line")
+done < <(project_app_deployments)
 
 require_cmd docker
 require_cmd kubectl
