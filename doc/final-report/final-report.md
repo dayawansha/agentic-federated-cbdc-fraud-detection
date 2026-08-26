@@ -4,137 +4,135 @@
 **Name:** WAD Dusman Nalin Dayawansha  
 **ID Number:** K2557706  
 **Project Title:** An Agentic Federated Learning Framework for Privacy Preserving Fraud Detection in Central Bank Digital Currency (CBDC) Networks  
-**Supervisor:** Dr. Madhawa Ranawake  
-**Date:** September 2026  
+**Supervisor:** Ms. Karishani Bamunawita  
+**Date:** 30.01.2026  
 
 ---
 
-## WARRANTY STATEMENT  
+# I. WARRANTY STATEMENT  
 
 This is a student project. Therefore, neither the student nor University makes any warranty, express or implied, as to the accuracy of the data or conclusion of the work performed in the project and will not be held responsible for any consequences arising out of any inaccuracies or omissions therein.  
 
 ---
 
-### Declaration  
+# II. DECLARATION  
 
 I, WAD Dusman Nalin Dayawansha, declare that this dissertation titled "An Agentic Federated Learning Framework for Privacy Preserving Fraud Detection in Central Bank Digital Currency (CBDC) Networks" is my own work and has not been submitted previously for any other degree or professional qualification. All sources and literature referenced herein have been explicitly acknowledged.
 
 ---
 
-### Dedication  
+# III. DEDICATION  
 
 *To my parents, family, and supervisor, whose constant support and guidance made this research possible.*  
 
 ---
 
-### Acknowledgement  
+# IV. ACKNOWLEDGEMENT  
 
-I would like to express my deepest gratitude to my academic supervisor, **Dr. Madhawa Ranawake**, for his invaluable guidance, technical insights, and continuous encouragement throughout this project. 
+I would like to express my deepest gratitude to my academic supervisor, **Miss Karishani Bamunawita**, for her invaluable guidance, technical insights, and continuous encouragement throughout this project. 
 
 I also extend my sincere thanks to the faculty of the School of Computing at Kingston University for providing the academic foundations required to undertake this research. Finally, I am grateful to my family and friends for their understanding and support during the course of my MSc studies.
 
 ---
 
-### Abstract  
+# V. TABLE OF CONTENT  
+
+**Catalog**
+
+| Section | Description | Page |
+| :--- | :--- | :--- |
+| **I** | [WARRANTY STATEMENT](#i-warranty-statement) | i |
+| **II** | [Declaration](#ii-declaration) | i |
+| **III** | [Dedication](#iii-dedication) | i |
+| **IV** | [Acknowledgement](#iv-acknowledgement) | i |
+| **V** | [Table of Content](#v-table-of-content) | i |
+| **VI** | [Glossary of Terms](#vi-glossary-of-terms) | iv |
+| **VII** | [Abstract](#vii-abstract) | v |
+| **VIII** | [Introduction](#viii-introduction) | 1 |
+| | ↳ [A. Prolegomena](#a-prolegomena) | 1 |
+| **IX** | [Aim and Objectives](#ix-aim-and-objectives) | 1 |
+| | ↳ [A. Aim](#a-aim) | 1 |
+| | ↳ [B. Objectives](#b-objectives) | 1 |
+| | ↳ [C. Background and Motivation](#c-background-and-motivation) | 2 |
+| | ↳ [D. Problem in Brief](#d-problem-in-brief) | 2 |
+| | ↳ [E. Proposed Solution](#e-proposed-solution) | 3 |
+| | ↳ [F. Structure of the Thesis](#f-structure-of-the-thesis) | 3 |
+| | ↳ [G. Summary](#g-summary) | 4 |
+| **X** | [Literature Review](#x-literature-review) | 4 |
+| | ↳ [A. Introduction](#a-introduction) | 4 |
+| | ↳ [B. Evolution of Graph Learning and Fraud Analytics](#b-evolution-of-graph-learning-and-fraud-analytics) | 4 |
+| | ↳ [C. Privacy Preserving Machine Learning](#c-privacy-preserving-machine-learning) | 4 |
+| | ↳ [D. Agentic AI for Adaptive Federated Coordination](#d-agentic-ai-for-adaptive-federated-coordination) | 5 |
+| | ↳ [E. Problem Definition and Literature Gap](#e-problem-definition-and-literature-gap) | 5 |
+| | ↳ [F. Summary](#f-summary) | 6 |
+| **XI** | [TECHNOLOGY](#xi-technology) | 6 |
+| | ↳ [A. Selection Justification](#a-selection-justification) | 6 |
+| | ↳ [B. Graph Processing & ML Stack](#b-graph-processing--ml-stack) | 7 |
+| | ↳ [C. Streaming & Storage Infrastructure](#c-streaming--storage-infrastructure) | 7 |
+| **XII** | [DESIGN](#xii-design) | 7 |
+| | ↳ [A. High-Level System Architecture](#a-high-level-system-architecture) | 7 |
+| | ↳ [B. System Architecture](#b-system-architecture) | 8 |
+| | ↳ [C. System Interaction Flow (Sequence Flow)](#c-system-interaction-flow-sequence-flow) | 10 |
+| **XIII** | [APPROACH](#xiii-approach) | 13 |
+| | ↳ [A. Transaction Representation & Data Modeling](#a-transaction-representation-&-data-modeling) | 13 |
+| | ↳ [B. Proxy Dataset Description and Data Preparation](#b-proxy-dataset-description-and-data-preparation) | 14 |
+| | ↳ [C. Dynamic Feature Engineering](#c-dynamic-feature-engineering) | 14 |
+| | ↳ [D. GNN-based Semi-Supervised Learning & Label Propagation](#d-gnn-based-semi-supervised-learning-&-label-propagation) | 15 |
+| | ↳ [E. Collaborative Federated Optimization](#e-collaborative-federated-optimization) | 15 |
+| **XIV** | [IMPLEMENTATION](#xiv-implementation) | 15 |
+| | ↳ [A. Local Agent Resource Profiler & Q-Learning Engine](#a-local-agent-resource-profiler-&-q-learning-engine) | 16 |
+| | ↳ [B. Dataset Ingestion and Neo4j Database Pipeline](#b-dataset-ingestion-and-neo4j-database-pipeline) | 16 |
+| | ↳ [C. Graph Database Feature Indexing Pipeline](#c-graph-database-feature-indexing-pipeline) | 17 |
+| | ↳ [D. PyTorch Geometric Model & Training Pipeline](#d-pytorch-geometric-model-&-training-pipeline) | 17 |
+| | ↳ [E. Privacy Layer (DP Noise & X25519 Masking)](#e-privacy-layer-dp-noise-&-x25519-masking) | 18 |
+| | ↳ [F. Agentic Coordinator & Robust Aggregator](#f-agentic-coordinator-&-robust-aggregator) | 19 |
+| **XV** | [EVALUATION](#xv-evaluation) | 20 |
+| | ↳ [A. Experimental Setup & Datasets](#a-experimental-setup-&-datasets) | 20 |
+| | ↳ [B. Fraud Detection Performance Analysis](#b-fraud-detection-performance-analysis) | 20 |
+| | ↳ [C. Agentic Resource-Aware Performance](#c-agentic-resource-aware-performance) | 20 |
+| | ↳ [D. Privacy Budget (Epsilon) Decay and Noise Impact](#d-privacy-budget-epsilon-decay-and-noise-impact) | 21 |
+| **XVI** | [CONCLUSION AND FUTURE WORK](#xvi-conclusion-and-future-work) | 21 |
+| | ↳ [A. Summary of Contributions](#a-summary-of-contributions) | 21 |
+| | ↳ [B. Limitations](#b-limitations) | 21 |
+| | ↳ [C. Future Work](#c-future-work) | 22 |
+| **XVII** | [REFERENCES](#xvii-references) | 22 |
+
+---
+
+# VI. GLOSSARY OF TERMS
+
+*   **AI** — Artificial Intelligence
+*   **CBDC** — Central Bank Digital Currency
+*   **FL** — Federated Learning
+*   **GNN** — Graph Neural Network
+*   **ML** — Machine Learning
+*   **API** — Application Programming Interface
+*   **CDC** — Change Data Capture
+*   **DP** — Differential Privacy
+*   **GAT** — Graph Attention Network
+*   **GDPR** — General Data Protection Regulation
+*   **gRPC** — Remote Procedure Call framework
+*   **mTLS** — Mutual Transport Layer Security
+*   **PSD2** — Payment Services Directive 2
+*   **RL** — Reinforcement Learning
+*   **Non-IID** — Non-Independent and Identically Distributed Data
+*   **FedAvg** — Federated Averaging Algorithm
+
+---
+
+# VII. ABSTRACT  
 
 Digital currencies like Bitcoin, Ethereum, and Tether have become a major global medium of exchange. However, their rise highlights a key challenge: these currencies cannot be governed or controlled by central banks because they are non-sovereign digital assets. In response, several countries are introducing or developing Central Bank Digital Currencies (CBDCs) as sovereign alternatives. Yet, fraud remains a persistent issue in any digital currency environment. This research proposes an Agentic Federated Learning framework designed specifically to detect fraud in CBDC networks without compromising user privacy.
 
 The framework allows financial institutions to train Graph Neural Network (GNN) models collaboratively without sharing or exposing raw transaction data, ensuring compliance with privacy regulations like GDPR. By combining federated learning with differential privacy, secure aggregation, and agentic AI, the system supports autonomous coordination, robust update aggregation, and training that adapts to the resource constraints (like CPU and battery) of individual nodes. The prototype was evaluated using the Elliptic++ dataset as a proxy for CBDC transaction streams. The results show that the federated GNN model achieves detection performance close to centralized baselines while keeping strict mathematical privacy budgets.
 
-
 ---
 
-### Contents  
 
-I. [INTRODUCTION](#i-introduction)  
-   - [A. Prolegomena](#a-prolegomena)  
-   - [B. Aim and Objectives](#b-aim-and-objectives)  
-     - [1) Aim](#1-aim)  
-     - [2) Objectives](#2-objectives)  
-   - [C. Background and Motivation](#c-background-and-motivation)  
-   - [D. Problem in Brief](#d-problem-in-brief)  
-   - [E. Proposed Solution](#e-proposed-solution)  
-   - [F. Structure of the Thesis](#f-structure-of-the-thesis)  
-   - [G. Summary](#g-summary)  
-II. [LITERATURE REVIEW](#ii-literature-review)  
-   - [A. Introduction](#a-introduction)  
-   - [B. Evolution of Graph Learning and Fraud Analytics](#b-evolution-of-graph-learning-and-fraud-analytics)  
-   - [C. Privacy-Preserving Machine Learning](#c-privacy-preserving-machine-learning)  
-   - [D. Agentic AI for Adaptive Federated Coordination](#d-agentic-ai-for-adaptive-federated-coordination)  
-   - [E. Problem Definition and Literature Gap](#e-problem-definition-and-literature-gap)  
-   - [F. Summary](#f-summary)  
-III. [TECHNOLOGY](#iii-technology)  
-   - [A. Selection Justification](#a-selection-justification)  
-   - [B. Graph Processing & ML Stack](#b-graph-processing--ml-stack)  
-   - [C. Streaming & Storage Infrastructure](#c-streaming--storage-infrastructure)  
-IV. [DESIGN](#iv-design)  
-   - [A. High-Level System Architecture](#a-high-level-system-architecture)  
-   - [B. Component Architecture](#b-component-architecture)  
-   - [C. System Interaction Flow (Sequence Flow)](#c-system-interaction-flow-sequence-flow)  
-V. [APPROACH](#v-approach)  
-   - [A. Transaction Representation & Data Modeling](#a-transaction-representation--data-modeling)  
-   - [B. Dataset Description and Data Preparation](#b-dataset-description-and-data-preparation)  
-   - [C. Dynamic Feature Engineering](#c-dynamic-feature-engineering)  
-   - [D. GNN-based Semi-Supervised Learning & Label Propagation](#d-gnn-based-semi-supervised-learning--label-propagation)  
-   - [E. Collaborative Federated Optimization](#e-collaborative-federated-optimization)  
-VI. [IMPLEMENTATION](#vi-implementation)  
-   - [A. Local Agent Resource Profiler & Q-Learning Engine](#a-local-agent-resource-profiler--q-learning-engine)  
-   - [B. Dataset Ingestion and Neo4j Database Pipeline](#b-dataset-ingestion-and-neo4j-database-pipeline)  
-   - [C. Graph Database Feature Indexing Pipeline](#c-graph-database-feature-indexing-pipeline)  
-   - [D. PyTorch Geometric Model & Training Pipeline](#d-pytorch-geometric-model--training-pipeline)  
-   - [E. Privacy Layer (DP Noise & X25519 Masking)](#e-privacy-layer-dp-noise--x25519-masking)  
-   - [F. Agentic Coordinator & Robust Aggregator](#f-agentic-coordinator--robust-aggregator)  
-VII. [EVALUATION](#vii-evaluation)  
-   - [A. Experimental Setup & Datasets](#a-experimental-setup--datasets)  
-   - [B. Fraud Detection Performance Analysis](#b-fraud-detection-performance-analysis)  
-   - [C. Agentic Resource-Aware Performance](#c-agentic-resource-aware-performance)  
-   - [D. Privacy Budget (Epsilon) Decay and Noise Impact](#d-privacy-budget-epsilon-decay-and-noise-impact)  
-VIII. [CONCLUSION AND FUTURE WORK](#viii-conclusion-and-future-work)  
-   - [A. Summary of Contributions](#a-summary-of-contributions)  
-   - [B. Limitations](#b-limitations)  
-   - [C. Future Work](#c-future-work)  
-[REFERENCES](#references)  
-[APPENDICES](#appendices)  
-
----
-
-### List of Figures/Tables  
-
-*   **Figure 4.1:** System Architecture Block Diagram — Page 7  
-*   **Figure 4.2:** System Sequence Interaction Flow — Page 9  
-*   **Figure 5.1:** ER Graph Schema of Wallet and Transactions — Page 11  
-*   **Figure 6.1:** local-agent Q-Learning Decision State Diagram — Page 14  
-*   **Figure 7.1:** GNN Model Training Convergence Curves — Page 18  
-*   **Figure 7.2:** Accuracy vs. Privacy Budget (Epsilon) Tradeoff — Page 20  
-*   **Table 3.1:** Core Technology Stack Configurations — Page 6  
-*   **Table 5.1:** Extracted Graph Node and Edge Features — Page 12  
-*   **Table 7.1:** Fraud Detection Performance Metrics Comparison — Page 19  
-*   **Table 7.2:** Q-learning Resource Allocation Adaptation Outcomes — Page 21  
-
----
-
-### Glossary of Terms  
-
-*   **AI** — Artificial Intelligence  
-*   **API** — Application Programming Interface  
-*   **CBDC** — Central Bank Digital Currency  
-*   **CDC** — Change Data Capture  
-*   **DP** — Differential Privacy  
-*   **FL** — Federated Learning  
-*   **GAT** — Graph Attention Network  
-*   **GDPR** — General Data Protection Regulation  
-*   **GNN** — Graph Neural Network  
-*   **HTTP** — Hypertext Transfer Protocol  
-*   **mTLS** — Mutual Transport Layer Security  
-*   **PSD2** — Payment Services Directive 2  
-*   **RL** — Reinforcement Learning  
-
----
-
-# I. INTRODUCTION  
+# VIII. INTRODUCTION  
 
 ## A. Prolegomena  
-Sovereign Central Bank Digital Currencies (CBDCs) are transforming the global retail and wholesale payment landscapes. By introducing programmable digital cash issued directly by monetary authorities, CBDC architectures promise faster settlements and lower cross-border transfer fees. However, this high-velocity digital rails environment also exposes the financial ecosystem to rapid, sophisticated fraud schemes. 
+Sovereign Central Bank Digital Currencies (CBDCs) are transforming the global retail and wholesale payment landscapes. By introducing programmable digital cash issued directly by monetary authorities, CBDC architectures promise faster settlements and lower cross-border transfer fees. However, this high-velocity digital rails environment also exposes the financial ecosystem to rapid, sophisticated fraud schemes, requiring robust monitoring and security architectures tailored to digital currency ecosystems (Malkoochi, 2025). 
 
 According to reports from the Bank for International Settlements (BIS), the programmability and transaction speed of digital currencies make them highly vulnerable to coordinated multi-hop transaction chaining and structured money laundering. 
 
@@ -146,22 +144,30 @@ This thesis addresses the core conflict between regulatory privacy compliance an
 
 The resulting framework allows financial institutions to identify network-wide fraud patterns collaboratively while keeping raw transaction data strictly isolated on their own nodes.
 
-## B. Aim and Objectives  
+# IX. AIM AND OBJECTIVES  
 
-### 1) Aim  
+## A. Aim  
 To develop an Agentic Federated Learning framework that enables privacy-preserving, adaptive, and collaborative fraud detection across Central Bank Digital Currency (CBDC) ecosystems without requiring institutions to share sensitive transaction data.
 
-### 2) Objectives  
-1.  **Develop a Federated Learning Framework for CBDC Fraud Detection:** Establish a distributed learning setup in which each institution trains a local Graph Neural Network (GNN) model without sharing raw transaction data, thereby ensuring privacy and regulatory compliance.
-2.  **Develop Agentic AI Capabilities:** Create agentic components capable of managing training rounds, monitoring model behavior, and adapting local training hyperparameters (like epochs and learning rates) with minimal human intervention.
-3.  **Develop a Privacy-Preserving Training Pipeline:** Implement privacy-preserving mechanisms such as differential privacy and secure aggregation to ensure sensitive CBDC transaction data is never exposed during model update aggregation. 
-4.  **Develop a Prototype:** Build a working prototype utilizing containerized microservices and streaming message queues (Kafka) to demonstrate how federated learning and agentic coordination can jointly detect fraud in a privacy-preserving CBDC-like environment.
-5.  **SMART Objectives:**
-    *   **Specific:** Implement a federated GNN-based fraud detection prototype.
-    *   **Measurable:** Evaluate performance using Precision, Recall, F1-score, and ROC-AUC against centralized baselines.
-    *   **Achievable:** Use synthetic and open-source datasets (such as the Elliptic++ dataset) for transaction simulation.
-    *   **Relevant:** Address privacy and compliance challenges in CBDC systems.
-    *   **Time-bound:** Complete the design, implementation, and evaluation within the project timeline.
+## B. Objectives  
+1) *To Develop a Federated Learning Framework for CBDC Fraud Detection.*  
+To Develop a Federated Learning Framework for CBDC Fraud Detection that enables a distributed learning setup in which each institution trains a local model without sharing raw transaction data, thereby ensuring privacy and regulatory compliance. 
+
+2) *To Develop Agentic AI Capabilities*  
+To develop agentic components capable of managing training rounds, monitoring model behavior, and adapting the learning workflow with minimal human intervention. 
+
+3) *To Develop a Privacy-Preserving Training Pipeline*  
+To develop privacy-preserving mechanisms such as encrypted model updates, differential privacy, or secure aggregation to ensure sensitive CBDC transaction data is never exposed. 
+
+4) *To Develop a Prototype*  
+To develop a working prototype demonstrating how federated learning and agentic coordination can jointly detect fraud in a privacy-preserving CBDC-like environment. 
+
+5) *SMART Objectives*  
+*   **Specific:** Implement a federated GNN-based fraud detection prototype.  
+*   **Measurable:** Evaluate performance using Precision, Recall, F1-score, and ROC-AUC against centralized baselines.  
+*   **Achievable:** Use synthetic and open-source datasets for simulation (such as the Elliptic++ dataset) for transaction simulation.  
+*   **Relevant:** Address privacy and compliance challenges in CBDC systems.  
+*   **Time-bound:** Complete design, implementation, and evaluation within the project timeline.  
 
 ## C. Background and Motivation  
 Sovereign Central Bank Digital Currencies (CBDCs) are fundamentally reshaping how money works at a national level. This is no longer just a theoretical framework. Jamaica, Nigeria, and the Bahamas have already launched live CBDCs, and larger economies like China, India, Russia, etc. are running active pilot programs. That shift from concept to real-world deployment brings distinct payment security challenges.
@@ -194,20 +200,20 @@ Each **Bank Node** operates as an independent microservice cluster containing th
 
 The **Central Coordinator Node** orchestrates the collaborative learning cycle through the following services:
 *   **Agentic Coordinator:** Acts as the conductor (brain) of the entire federated system, managing training rounds (Federated Round Orchestration), handling system failures (SAGA Orchestration Pattern), voting on fraud patterns (Consensus & Threat Intelligence), and integrating system-wide services.
-*   **Federated model Aggregator:** The federated-model-aggregator is the merging engine (math brain) of the system. It combines all the separate models trained by individual banks into a single, improved global model.
+*   **Secure Aggregator:** The federated-model-aggregator is the merging engine (math brain) of the system. It combines all the separate models trained by individual banks into a single, improved global model.
 *   **Policy Manager:** Governs system privacy budgets ($\epsilon$, $\delta$), tracks audit trails, and distributes global execution policies.
 *   **Model Registry:** Stores versioned global models and synthetic evaluation metadata.
 
 ## F. Structure of the Thesis  
 This thesis has been structured with 8 chapters:
-*   **Chapter I: Introduction** presents aiming objectives, problem statements, and the high-level proposed solution.
-*   **Chapter II: Literature Review** analyzes GNN architectures, federated learning paradigms, privacy mechanisms, and identifies research gaps.
-*   **Chapter III: Technology** justifies the tools selected, including PyTorch Geometric, Neo4j, Kafka, and FastAPI.
-*   **Chapter IV: Design** describes architectural block diagrams, service boundaries, and sequence flows.
-*   **Chapter V: Approach** details feature engineering, semi-supervised GNN logic, and the secure federated learning cycle.
-*   **Chapter VI: Implementation** outlines code segments, Q-learning updates, gradient privatization, and Secure Aggregation masks.
-*   **Chapter VII: Evaluation** presents experimental performance metrics, training curves, privacy decay, and resource savings.
-*   **Chapter VIII: Conclusion and Future Work** summarizes accomplishments and suggests future research directions.
+Chapter 1: Introduction presents aiming objectives, problem statements, and the high-level proposed solution.
+Chapter 2: Literature Review analyzes GNN architectures, federated learning paradigms, privacy mechanisms, and identifies research gaps.
+Chapter 3: Technology justifies the tools selected, including PyTorch Geometric, Neo4j, Kafka, and FastAPI.
+Chapter 4: Design describes architectural block diagrams, service boundaries, and sequence flows.
+Chapter 5: Approach details feature engineering, semi-supervised GNN logic, and the secure federated learning cycle.
+Chapter 6: Implementation outlines code segments, Q-learning updates, gradient privatization, and Secure Aggregation masks.
+Chapter 7: Evaluation presents experimental performance metrics, training curves, privacy decay, and resource savings.
+Chapter 8: Conclusion and Future Work summarizes accomplishments and suggests future research directions.
 
 ## G. Summary  
 This chapter introduced the research scope, outlining the conflict between data privacy regulations and collaborative fraud detection in CBDC payment rails. SMART research objectives were established, aiming to build a prototype GNN federated framework managed by agentic actors. 
@@ -216,7 +222,8 @@ The next chapter provides a detailed critical review of the solutions.
 
 ---
 
-# II. LITERATURE REVIEW
+
+# X. LITERATURE REVIEW
 
 ## A. Introduction
 The previous section introduced the research background, problem, and objectives. This section reviews the literature related to graph machine learning, federated learning, privacy-preserving analytics, and agentic AI. It examines the evolution, major developments, and limitations of these technologies, as well as their relevance to fraud detection in Central Bank Digital Currency (CBDC) networks. Based on this review, the research gap addressed by the proposed framework is identified.
@@ -226,9 +233,9 @@ Early fraud-detection systems used predefined rules to flag suspicious activitie
 
 Machine-learning models such as Random Forest and XGBoost improved fraud detection by analysing transaction features, including amount, account balance, location, and frequency. However, treating transactions as independent records overlooked the relationships among accounts. Graph-based methods addressed this limitation by representing accounts as nodes and transactions as edges. While early methods used manually extracted features such as PageRank and degree centrality, Graph Neural Networks (GNNs) learned directly from the graph structure.
 
-Major developments included Graph Convolutional Networks (GCNs) by Kipf and Welling (2017), GraphSAGE by Hamilton et al. (2017), and Graph Attention Networks (GATs) by Veličković et al. (2018). These models support the detection of coordinated transactions and suspicious fund flows. However, most GNN-based methods assume centralised access to the complete transaction graph, which is impractical when data are distributed across banks and protected by privacy and regulatory requirements. This limitation motivates the privacy-preserving approaches discussed in Section II-C.
+Major developments included Graph Convolutional Networks (GCNs) by Kipf and Welling (2017), GraphSAGE by Hamilton et al. (2017), and Graph Attention Networks (GATs) by Veličković et al. (2018). These models support the detection of coordinated transactions and suspicious fund flows. However, most GNN-based methods assume centralised access to the complete transaction graph, which is impractical when data are distributed across banks and protected by privacy and regulatory requirements. This limitation motivates the privacy-preserving approaches discussed in Section X-C.
 
-## C. Privacy-Preserving Machine Learning
+## C. Privacy Preserving Machine Learning
 Federated Learning (FL), introduced by McMahan et al. (2017), enables multiple organisations to train a shared model without exchanging raw data. Each client trains the model locally and sends model updates to a coordinating server, which commonly uses Federated Averaging to produce an improved global model. This makes FL suitable for collaboration among banks while allowing transaction data to remain within each institution.
 
 However, model updates may still reveal sensitive training information through membership-inference and data-reconstruction attacks. Differential Privacy (DP) reduces this risk by limiting the influence of individual records and adding controlled noise to model updates (Dwork & Roth, 2014; Abadi et al., 2016). Stronger noise improves privacy but may reduce model accuracy.
@@ -236,7 +243,7 @@ However, model updates may still reveal sensitive training information through m
 Secure Aggregation provides additional protection by allowing the server to combine client updates without viewing them individually (Bonawitz et al., 2017). Together, FL, DP, and Secure Aggregation provide a strong privacy-preserving foundation, although they introduce additional communication, computational, and coordination costs.
 
 ## D. Agentic AI for Adaptive Federated Coordination
-The privacy-preserving techniques discussed in Section II-C often use fixed training settings for all clients. However, banks may differ in their computing resources, network conditions, data volumes, fraud-label availability, and privacy requirements. Therefore, a fixed configuration may not be suitable for every institution.
+The privacy-preserving techniques discussed in Section X-B often use fixed training settings for all clients. However, banks may differ in their computing resources, network conditions, data volumes, fraud-label availability, and privacy requirements. Therefore, a fixed configuration may not be suitable for every institution.
 
 Previous research has explored adaptive client selection. For example, the Oort system proposed by Lai et al. (2021) selects participants according to their statistical utility and system performance. Agentic AI could extend this approach by monitoring local conditions and selecting approved actions, such as adjusting training epochs, delaying participation during high system load, or opting out of a federated round.
 
@@ -245,7 +252,7 @@ Such decisions could be supported by reinforcement learning to balance model per
 ## E. Problem Definition and Literature Gap
 Most previous studies have focused on fraud detection in traditional financial systems, including commercial banking, credit-card payments, and other conventional digital-payment networks. Within these contexts, GNNs, Federated Learning, Differential Privacy, Secure Aggregation, and adaptive or agentic coordination have generally been examined separately. However, this literature review did not identify a study that integrates these technologies into a single fraud-detection framework designed specifically for CBDC networks.
 
-**Emerging CBDC fraud-detection research:** CBDCs remain a relatively new development, and only a small number of countries have fully deployed them. Most CBDC research has focused on monetary policy, financial stability, system architecture, cybersecurity, privacy, and regulatory requirements (BIS, 2020; BIS CPMI, 2021; BIS CGRM, 2023). Although some recent studies have proposed methods for improving CBDC security and fraud detection, this field remains at an early stage. In particular, there is limited evidence of fraud-detection models being trained and validated using real-world, labelled CBDC transaction data.
+**Emerging CBDC fraud-detection research:** CBDCs remain a relatively new development, and only a small number of countries have fully deployed them. Most CBDC research has focused on monetary policy, financial stability, system architecture, cybersecurity, privacy, and regulatory requirements (BIS, 2020; BIS CPMI, 2021; BIS CGRM, 2023). Although some recent studies have proposed frameworks for improving CBDC security and fraud monitoring (e.g., Malkoochi, 2025), this field remains at an early stage. In particular, there is limited evidence of fraud-detection models being trained and validated using real-world, labelled CBDC transaction data.
 
 The limited availability of operational CBDC data presents an important research challenge. Existing financial fraud-detection studies usually rely on credit-card, conventional banking, cryptocurrency, or synthetic datasets. These datasets may not fully represent the transaction volume, programmability, governance structure, and emerging fraud patterns of CBDC networks.
 
@@ -255,7 +262,7 @@ The limited availability of operational CBDC data presents an important research
 
 **Limited integration of GNNs and Federated Learning in CBDC environments:** Existing GNN-based fraud-detection methods generally assume centralised access to the complete transaction graph. Federated Learning has mainly been applied to conventional financial and credit-card fraud detection using distributed tabular datasets. Although some recent financial studies combine GNNs with Federated Learning, there is limited evidence of this combination being designed and validated specifically for CBDC networks.
 
-**Limited integration of privacy-preserving techniques:** Federated Learning reduces the need to exchange raw transaction data, but model updates may still reveal sensitive information. Differential Privacy and Secure Aggregation can provide additional protection. However, the reviewed literature provides limited evidence of CBDC fraud-detection frameworks that combine Federated Learning, Differential Privacy, and Secure Aggregation while maintaining acceptable fraud-detection performance.
+**Limited integration of privacy-preserving techniques:** Federated Learning reduces the need to exchange raw transaction data, but model updates may still reveal sensitive information. Differential Privacy and Secure Aggregation can provide additional protection. However, the reviewed literature provides limited evidence of CBDC fraud-detection frameworks that combine Federated Learning, Differential Privacy, and Secure Aggregation while maintaining acceptable fraud-detection performance. While frameworks such as the one proposed by Malkoochi (2025) investigate the balance between security imperatives and privacy preservation, they typically employ traditional centralized architectures rather than decentralized, federated configurations.
 
 **Lack of dynamic and adaptive federated-learning configurations:** Many existing FL frameworks apply fixed training settings, such as the same number of epochs, privacy parameters, and participation rules, to all clients. In a CBDC environment, participating institutions may have different computing resources, data distributions, fraud-label availability, and privacy requirements. Therefore, a fixed configuration may not be suitable for every institution or training round.
 
@@ -278,7 +285,7 @@ The next section presents the technologies selected to design and implement the 
 
 ---
 
-# III. TECHNOLOGY  
+# XI. TECHNOLOGY  
 
 ## A. Selection Justification  
 To validate the proposed framework, a fully containerized microservice prototype has been built. The stack selection balances computational efficiency, graph analytics performance, and messaging throughput. 
@@ -364,40 +371,97 @@ Each node contains specialized microservices:
 10. **Model Registry (Coordinator Node):** Stores versioned global models and synthetic evaluation metadata.
 
 ## C. System Interaction Flow (Sequence Flow)  
-The system operates across 6 distinct phases, detailed in the sequence flow:
+The end-to-end runtime interactions across both the local banking node domain and the central coordinator node are divided into five distinct operational sequence diagrams:
 
+### 1) Part 1: Real-time Ingestion & Rule-Based Alerting Flow
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Core as CBDC Core Ledger
+    participant TG as Transaction Graph (9004)
+    participant DB as Neo4j Database
+    participant Kafka as Kafka Bus (9092)
+    participant Alert as Alerting Service (9005)
+    participant Dash as Fraud Dashboard (3000)
+
+    Core->>TG: POST /transactions (amount, sender, receiver)
+    TG->>DB: Cypher: MERGE Account/Transaction vertices & SENDS/RECEIVES edges
+    TG->>Kafka: Publish CDC event (transactions.events)
+    Kafka->>Alert: Consume transaction event
+    Alert->>Dash: Push real-time alert (WebSocket / SSE)
+    Dash->>Dash: Refresh active charts & operator alerts list
 ```
-Phase 1: Real-time Ingestion & Rule-Based Alerting
-CBDC Core ──> transaction-graph (9004) ──> Neo4j DB
-                    │
-                    ▼ (Publish CDC Event)
-                Kafka Bus (9092) ──> alerting (9005) ──> fraud-dashboard (3000)
 
-Phase 2: Live UI Dashboard Monitoring
-fraud-dashboard (3000) ──> GET /agent/status ──> local-agent (9001)
+### 2) Part 2: Federated Learning Round Initialization
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Coord as Agentic Coordinator (8001)
+    participant PM as Policy Manager (8003)
+    participant LA as Local Agent (9001)
 
-Phase 3: FL Round Initialization
-agentic-coordinator (8001) ──> GET /policies/global ──> policy-manager (8003)
-agentic-coordinator (8001) ──> health & privacy checks on Bank Nodes
+    Coord->>PM: GET /policies/global (Fetch active epsilon, delta budgets)
+    PM->>Coord: Return active global policy parameters
+    Coord->>LA: GET /agent/status (Health & status check)
+    LA->>LA: Check local system metrics (CPU load, battery level)
+    LA->>Coord: Return status (available, CPU=15%, Battery=95%)
+```
 
-Phase 4: Local GNN Training & DP Masking
-agentic-coordinator (8001) ──> POST /agent/round/start ──> local-agent (9001)
-local-agent (9001) ──> local resource checks & Q-learning optimization
-local-agent (9001) ──> local-gnn (9002) (Train GNN model)
-local-agent (9001) ──> privacy-layer (9003) (DP noise & mask updates)
-local-agent (9001) ──> Submit masked model ──> agentic-coordinator (8001)
+### 3) Part 3: Local GNN Training & DP Masking
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Coord as Agentic Coordinator (8001)
+    participant LA as Local Agent (9001)
+    participant GNN as Local GNN (9002)
+    participant Priv as Privacy Layer (9003)
 
-Phase 5: Aggregation & Validation
-agentic-coordinator (8001) ──> Decrypt updates ──> federated-model-aggregator (8002)
-agentic-coordinator (8001) ──> Validate model ──> register global weights in model-registry (8004)
+    Coord->>LA: POST /agent/round/start (round_id, global_weights)
+    LA->>LA: Q-Learning: Discretize state & select actions (epochs, noise scale)
+    LA->>GNN: POST /train (Run localized GraphSAGE-GAT training)
+    GNN->>LA: Return raw model gradients & local metrics (loss, F1)
+    LA->>Priv: POST /privatize (Clip updates & inject Gaussian DP noise)
+    Priv->>Priv: Apply pairwise X25519 zero-sum Secure Aggregation masking
+    Priv->>LA: Return masked weight updates
+    LA->>Coord: POST /round/submit (Submit masked updates)
+```
 
-Phase 6: Local GNN Inference
-local-agent (9001) ──> Download global model ──> local-gnn (9002) ──> Publish detections to Kafka
+### 4) Part 4: Federated Model Aggregation & Validation
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Coord as Agentic Coordinator (8001)
+    participant Agg as Fed Model Aggregator (8002)
+    participant Registry as Model Registry (8004)
+
+    Note over Coord, Agg: Await updates from all active Bank Nodes
+    Coord->>Agg: POST /aggregate (masked local weights)
+    Agg->>Agg: Cancel out zero-sum X25519 masks
+    Agg->>Agg: Compute coordinate-wise Median (RobustMedian strategy)
+    Agg->>Coord: Return aggregated global weights
+    Coord->>Coord: Validate global model against baseline (accuracy drop < 0.08)
+    Coord->>Registry: POST /models (Register versioned global model weights)
+```
+
+### 5) Part 5: Local GNN Inference & Alert Monitoring
+```mermaid
+sequenceDiagram
+    autonumber
+    participant LA as Local Agent (9001)
+    participant Registry as Model Registry (8004)
+    participant GNN as Local GNN (9002)
+    participant Kafka as Kafka Bus (9092)
+
+    LA->>Registry: GET /models/latest (Download latest global model weights)
+    Registry->>LA: Return global weights
+    LA->>GNN: Load global weights for local inference
+    GNN->>GNN: Run inference on Neo4j subgraphs
+    GNN->>Kafka: Publish fraud alert classifications (fraud.alerts)
 ```
 
 ---
 
-# V. APPROACH  
+# XIII. APPROACH  
 
 ## A. Transaction Representation & Data Modeling  
 Transactions are modeled as directed graphs, where accounts/wallets are nodes and payments are directed edges. 
@@ -432,35 +496,19 @@ Figure 5.1 shows the Entity-Relationship (ER) graph schema.
 The database structure maintains strict separation. Bank Node A only has visibility of its own wallets and transactions. If a transaction occurs between Bank Node A and Bank Node B, it is represented as an edge pointing to an external destination node, preserving transaction data locality.
 
 ## B. Proxy Dataset Description and Data Preparation  
-To evaluate the proposed framework under realistic transaction topologies, we leverage the open-source **Elliptic++ dataset** (Monnerat et al., 2023), which extends the standard Elliptic dataset by adding actor (wallet address) graph mappings to the transaction edgelist.
+To evaluate the proposed framework under realistic transaction topologies, we leverage the open-source **Elliptic++ dataset** (Monnerat et al., 2023) as a proxy, which provides a graph of 203,769 Bitcoin transaction nodes (vertices), 234,355 money flow edges, and 822,942 wallet address (actor) nodes.
 
-### 1) Dataset Characteristics
-The raw Elliptic++ dataset consists of two primary components representing Bitcoin graph interactions:
-*   **Elliptic++ Transactions Dataset:** Contains 203,769 transaction nodes (vertices) and 234,355 directed payment edges spanning 49 discrete time steps. Each transaction is characterized by a 183-dimensional feature vector. Nodes are categorized into three classes: Class 1 (Illicit, 4,545 nodes), Class 2 (Licit, 42,019 nodes), and Class 3 (Unknown, 157,205 nodes).
-*   **Elliptic++ Actors (Wallet Addresses) Dataset:** Contains 822,942 wallet address nodes, 1,268,260 temporal interaction nodes, 2,868,964 address-to-address edges, and 1,314,241 address-to-transaction edges, mapped with a 56-dimensional feature vector. Class distributions include Class 1 (Illicit, 14,266), Class 2 (Licit, 251,088), and Class 3 (Unknown, 557,588).
-
-### 2) Data Preparation & Modification Pipeline
+### 1) Data Preprocessing & Federated Sharding
 To adapt this centralized blockchain dataset into a federated CBDC simulation, the following preprocessing steps are executed via `data_preparation.py`:
-1.  **Node and Class Merging:** The feature matrix files (e.g., `txs_features.csv`) are inner-joined with their corresponding classification labels (`txs_classes.csv`) using transaction/actor identifiers (`txId` or `address`).
-2.  **Feature Standardization:** To ensure stability during deep learning optimization, z-score normalization is applied to all feature columns (excluding identifiers, step indices, and classes) using scikit-learn's `StandardScaler`:
-    $$x_{\text{scaled}} = \frac{x - \mu}{\sigma}$$
-    Any missing feature values are imputed with $0.0$.
-3.  **GNN Index Mapping:** Transaction IDs and addresses are mapped to continuous integer indices (0 to $N-1$) stored as pickled dictionaries (`txs_node_mapping.pkl`), enabling high-performance adjacency tensor manipulation in PyTorch Geometric (PyG).
-4.  **Federated Partitioning (Temporal Sharding):** The unified transaction graph is split into $n\_shards = 4$ non-overlapping subsets based on the `Time step` column. Each partition is assigned to a simulated Bank Node, preventing training data leakage between nodes while preserving local temporal continuity.
-5.  **Local Graph Construction & Edge Filtering:** During model loading (`_load_static_graph_data`), each local Bank Node filters the global edgelist (`txs_edgelist.csv`) to retain only edges where both the source and target node identifiers exist within its designated shard partition. Bidirectional edges are generated in-memory to support symmetric information propagation:
-    $$\mathcal{E}_{\text{local}} = \mathcal{E}_{\text{forward}} \cup \mathcal{E}_{\text{backward}}$$
+*   **Preprocessing & Standardization:** Node features and label classes are joined, and continuous attributes are normalized using z-score standardization ($x_{\text{scaled}} = \frac{x - \mu}{\sigma}$). Raw string IDs are converted to continuous integer indices for PyTorch Geometric (PyG) compatibility.
+*   **Temporal Partitioning (Sharding):** The global transaction graph is partitioned by time step into 4 non-overlapping subsets. Each partition is assigned to a simulated Bank Node, preventing training data leakage while preserving local temporal continuity.
 
-### 3) Mapping Bitcoin UTXO structures to Account-Based CBDC Ledgers
-A primary gap between public blockchain data (like Bitcoin) and Central Bank Digital Currency architectures is the transaction data model:
-*   **Bitcoin UTXO Flow Model:** Bitcoin is a transaction-to-transaction (tx-tx) graph. Nodes represent raw transaction events, and edges denote coin transfers where unspent outputs of one transaction are consumed as inputs by another. There are no explicit persistent "account profiles" or payment channels.
-*   **CBDC Account/Balance Model:** Retail CBDC systems utilize an account-based ledger layout, similar to commercial banking databases. Payments are direct balance transfers between stable, persistent digital wallet accounts (e.g., from Account A to Account B).
-
-To bridge this translation gap and evaluate our framework on a realistic banking architecture, we perform a bipartite graph transformation prior to database ingestion:
-1.  **UTXO Nodes to Account Wallets:** Every unique raw transaction ID in the Elliptic++ dataset is mapped to a simulated customer `Account` wallet entity (e.g., `acct-txId`).
-2.  **UTXO Coin Edges to Payment Transactions:** Each directed money flow edge (connecting transaction A to transaction B) is mapped to a distinct payment `Transaction` entity.
-3.  **Target Bipartite Construction:** In the database schema, this is represented as:
+### 2) UTXO to Account-Based Bipartite Mapping
+A primary gap between public blockchain data (like Bitcoin) and CBDC architectures is the transaction data model: Bitcoin uses a transaction-to-transaction (UTXO) flow graph, whereas CBDCs utilize an account-balance model. To bridge this gap, we perform a bipartite graph transformation prior to database ingestion:
+1.  **Node/Edge Conversion:** Raw Bitcoin transaction IDs are mapped to customer `Account` wallets (e.g., `acct-txId`), and UTXO money flow edges are converted into distinct payment `Transaction` nodes.
+2.  **Bipartite Layout:** This constructs a SENDS/RECEIVES bipartite schema in Neo4j:
     $$\text{(Account A)} \xrightarrow{\text{SENDS}} \text{(Transaction AB)} \xrightarrow{\text{RECEIVES}} \text{(Account B)}$$
-4.  **Synthetic Amount Derivation:** Because Bitcoin's public ledger amounts are normalized and anonymous in the research dataset, we synthetically scale one of the node's local structural features to represent a realistic fiat-equivalent payment amount (bounded between 1.0 and 1,000,000.0 CBDC units).
+3.  **Amount Synthesis:** Because transaction values are anonymous in the Elliptic++ dataset, absolute CBDC amounts are synthetically derived by scaling node feature values between 1.0 and 1,000,000.0.
 
 ## C. Dynamic Feature Engineering  
 GNN models rely on topological features to classify anomalous transactions. Both node and edge features are extracted from Neo4j (Table 5.1).
@@ -498,7 +546,7 @@ where $\alpha_i$ are consensus weights determined during peer negotiation.
 
 ---
 
-# VI. IMPLEMENTATION  
+# XIV. IMPLEMENTATION  
 
 ## A. Local Agent Resource Profiler & Q-Learning Engine  
 The `local-agent` runs resource profiling via `psutil` and `pmset` to monitor CPU load and battery level. 
@@ -621,7 +669,7 @@ $$S_{AB} = \text{X25519}(\text{Private Key}_A, \text{Public Key}_B)$$
 
 Bank A adds $S_{AB}$ to its weights, while Bank B subtracts $S_{AB}$. During aggregation, these additions and subtractions cancel out.
 
-## E. Agentic Coordinator & Robust Aggregator  
+## F. Agentic Coordinator & Robust Aggregator  
 The `agentic-coordinator` is the central brain of the federated system, running on Port `8001`. It orchestrates training rounds, manages consensus voting, and acts as the integration bridge between all central services.
 
 ### 1) LangGraph Federated Round Orchestration
@@ -661,7 +709,7 @@ If the aggregated model fails validation (accuracy degradation > 0.08 compared t
 
 ---
 
-# VII. EVALUATION  
+# XV. EVALUATION  
 
 ## A. Experimental Setup & Datasets  
 The framework was evaluated using the **Elliptic++ dataset** (Monnerat et al., 2023), which contains a transaction graph of 203,769 nodes (representing wallets) and 234,355 edges (representing bitcoin transactions). 
@@ -712,7 +760,7 @@ For $\epsilon = 4.0$, the GNN model converged within 30 rounds, while setting a 
 
 ---
 
-# VIII. CONCLUSION AND FUTURE WORK  
+# XVI. CONCLUSION AND FUTURE WORK  
 
 ## A. Summary of Contributions  
 This thesis presented a privacy-preserving federated fraud detection framework tailored for CBDC environments. 
@@ -735,16 +783,17 @@ The primary contributions include:
 
 ---
 
-# REFERENCES  
+# XVII. REFERENCES  
 
 1.  Abadi, M. et al., 2016. Deep Learning with Differential Privacy. *Proceedings of the 23rd ACM SIGSAC Conference on Computer and Communications Security*, pp. 308–318.
 2.  Bonawitz, K. et al., 2017. Practical Secure Aggregation for Privacy-Preserving Machine Learning. *Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security*, pp. 1175–1191.
 3.  Dwork, C. & Roth, A., 2014. The Algorithmic Foundations of Differential Privacy. *Foundations and Trends in Theoretical Computer Science*, 9(3–4), pp. 211–407.
 4.  Hamilton, W. L., Ying, R. & Leskovec, J., 2017. Inductive Representation Learning on Large Graphs. *Advances in Neural Information Processing Systems (NeurIPS 2017)*, pp. 1024–1034.
 5.  Kipf, T. N. & Welling, M., 2017. Semi-Supervised Classification with Graph Convolutional Networks. *Proceedings of the International Conference on Learning Representations (ICLR)*.
-6.  McMahan, B., Moore, E., Ramage, D., Hampson, S. & y Arcas, B. A., 2017. Communication-Efficient Learning of Deep Networks from Decentralized Data. *Proceedings of the 20th International Conference on Artificial Intelligence and Statistics (AISTATS)*, pp. 1273–1282.
-7.  Monnerat, J. et al., 2023. Elliptic++: A graph network of Bitcoin blockchain transactions and wallet addresses. *arXiv preprint arXiv:2306.06108*.
-8.  Veličković, P. et al., 2018. Graph Attention Networks. *Proceedings of the International Conference on Learning Representations (ICLR)*.
+6.  Malkoochi, R., 2025. Multilayered CBDC Fraud Detection Framework: Securing Digital Currency Ecosystems. *World Journal of Advanced Research and Reviews*, 26(2), pp. 1995–2006. DOI: 10.30574/wjarr.2025.26.2.1841.
+7.  McMahan, B., Moore, E., Ramage, D., Hampson, S. & y Arcas, B. A., 2017. Communication-Efficient Learning of Deep Networks from Decentralized Data. *Proceedings of the 20th International Conference on Artificial Intelligence and Statistics (AISTATS)*, pp. 1273–1282.
+8.  Monnerat, J. et al., 2023. Elliptic++: A graph network of Bitcoin blockchain transactions and wallet addresses. *arXiv preprint arXiv:2306.06108*.
+9.  Veličković, P. et al., 2018. Graph Attention Networks. *Proceedings of the International Conference on Learning Representations (ICLR)*.
 
 ---
 
