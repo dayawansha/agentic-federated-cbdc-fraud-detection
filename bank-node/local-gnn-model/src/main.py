@@ -61,10 +61,19 @@ DEFAULT_PSEUDO_LABEL_CONFIDENCE = float(os.getenv("PSEUDO_LABEL_CONFIDENCE", "0.
 
 
 def _append_structural_features(x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+    """
+    Enriches the raw per-node feature matrix `x` with graph-structure features
+    computed from `edge_index` (in/out degree, neighborhood average degree, and
+    in/out degree ratio, each normalized to [0, 1]-ish scale). This lets the GNN
+    see connectivity patterns (e.g. an account fanning money out to many others)
+    directly as input features, on top of whatever transaction attributes it already has.
+    Returns `x` unchanged if the graph has no nodes.
+    """
     num_nodes = int(x.shape[0])
     if num_nodes == 0:
         return x
 
+    # Out-degree: how many edges leave each node. In-degree: how many arrive.
     src = edge_index[0]
     dst = edge_index[1]
     out_degree = torch.bincount(src, minlength=num_nodes).float().to(x.device)
@@ -174,6 +183,12 @@ class InferenceResponse(BaseModel):
 
 
 def _resolve_data_file(relative_path: str, env_var: str) -> str:
+    """
+    Finds the on-disk path to a training data file. Prefers an explicit override
+    via the given environment variable; otherwise searches the service directory
+    and its parent directories for `relative_path`, so the same code works both
+    inside the Docker container and when run locally from the repo root.
+    """
     override = os.getenv(env_var)
     if override:
         return override
@@ -189,6 +204,11 @@ def _resolve_data_file(relative_path: str, env_var: str) -> str:
     # Default to the service-root-relative location inside the container image.
     return str(service_root / relative_path)
 def _resolve_default_paths() -> Dict[str, str]:
+    """
+    Builds the dictionary of file paths (transaction shard, edges, and class
+    labels) used to load the static CSV training graph, honoring any
+    TX_SHARD_PATH / TX_EDGES_PATH / TX_CLASSES_PATH environment overrides.
+    """
     return {
         "shard_path": os.getenv(
             "TX_SHARD_PATH", _resolve_data_file("train-data/processed/txs_shard_1.csv", "TX_SHARD_PATH")
@@ -207,6 +227,12 @@ def _resolve_default_paths() -> Dict[str, str]:
 
 
 def _extract_numeric_transaction_id(node_id: object) -> int:
+    """
+    Converts a graph node id (which may already be a plain integer, or a string
+    like "tx-42"/"transaction_0007" coming from the live Transaction Graph
+    service) into a plain integer transaction id. Raises ValueError if no
+    digits can be found at all.
+    """
     text = str(node_id)
     try:
         return int(text)
@@ -218,6 +244,11 @@ def _extract_numeric_transaction_id(node_id: object) -> int:
 
 
 def _load_label_map() -> Dict[int, int]:
+    """
+    Loads the static classes CSV (ground-truth labels) and returns a mapping of
+    transaction id -> class code, used to attach known labels to nodes fetched
+    from the live Transaction Graph service.
+    """
     paths = _resolve_default_paths()
     classes_path = paths["classes_path"]
     classes_df = pd.read_csv(classes_path)
@@ -227,6 +258,12 @@ def _load_label_map() -> Dict[int, int]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """
+    FastAPI startup/shutdown hook. On startup, eagerly loads the transaction
+    graph and initializes the GNN trainer so the first `/train` or `/infer`
+    request doesn't pay that cold-start cost; failures are logged but do not
+    prevent the service from starting (it will retry lazily on first request).
+    """
     try:
         data = _load_graph_data()
         _ = _init_trainer(int(data.x.shape[1]))
@@ -254,6 +291,13 @@ def _load_live_graph_data() -> Optional[Data]:
     """
     Attempts to fetch live graph data from transaction-graph service.
     Returns None if empty, offline, or upon error.
+
+    On success, builds a PyTorch Geometric `Data` object from the live nodes/edges:
+    maps each node's known class to our 3-class scheme (0=licit, 1=illicit,
+    2=unknown), makes edges bidirectional, appends structural features, and
+    stamps metadata (data_source, sparse_label_mode, etc.) used later for
+    training/metrics. Falls back to `None` (triggering the static CSV shard)
+    on any network error, non-success payload, or unrecognized node ids.
     """
     logger.info("Attempting to load live graph data from Transaction Graph Service...")
     try:
@@ -289,6 +333,9 @@ def _load_live_graph_data() -> Optional[Data]:
             x = torch.tensor(x_raw, dtype=torch.float32)
             label_map = _load_label_map()
 
+            # Translate each live node id into a numeric transaction id, then look up
+            # its ground-truth class (source dataset uses 1=illicit, 2=licit, other=unknown)
+            # and remap it to our internal scheme (0=licit, 1=illicit, 2=unknown).
             y_vals = []
             tx_ids = []
             for node_id in node_ids:
@@ -323,6 +370,8 @@ def _load_live_graph_data() -> Optional[Data]:
                 edge_index = torch.empty((2, 0), dtype=torch.long)
 
             if edge_index.shape[1] > 0:
+                # Make every edge bidirectional so the GNN can pass messages both
+                # ways along a transfer, not just sender -> receiver.
                 rev_edge_index = torch.stack([edge_index[1], edge_index[0]], dim=0)
                 edge_index = torch.cat([edge_index, rev_edge_index], dim=1)
 
@@ -342,6 +391,15 @@ def _load_live_graph_data() -> Optional[Data]:
 
 @lru_cache(maxsize=1)
 def _load_static_graph_data() -> Data:
+    """
+    Loads the fallback training graph from the static CSV files on disk (the
+    pre-processed Elliptic++ transaction shard, its edges, and class labels).
+    Builds node features, remaps labels to our 0/1/2 scheme, makes edges
+    bidirectional, and appends structural features - producing the same
+    `Data` shape as `_load_live_graph_data`. Result is cached (this file set
+    does not change at runtime) since re-parsing the CSVs on every request
+    would be wasteful.
+    """
     paths = _resolve_default_paths()
     shard_path = paths["shard_path"]
     edges_path = paths["edges_path"]
@@ -408,6 +466,11 @@ def _load_static_graph_data() -> Data:
     return data
 
 def _load_graph_data() -> Data:
+    """
+    Returns the transaction graph to train/infer on: prefers the live graph
+    fetched from the Transaction Graph service, falling back to the static
+    CSV shard when the live service is unavailable or returns no data.
+    """
     live_data = _load_live_graph_data()
     if live_data is not None:
         return live_data
@@ -415,6 +478,13 @@ def _load_graph_data() -> Data:
 
 @lru_cache(maxsize=4)
 def _init_trainer(input_dim: int) -> LocalTrainer:
+    """
+    Builds (and caches, keyed by `input_dim`) the GNN model plus its
+    `LocalTrainer` wrapper, using architecture/hyperparameters from
+    environment variables (MODEL_TYPE, HIDDEN_DIM, OUTPUT_DIM, MODEL_HEADS,
+    MODEL_DROPOUT, LR, WEIGHT_DECAY). Caching avoids rebuilding the model on
+    every request as long as the feature dimensionality hasn't changed.
+    """
     model_type = os.getenv("MODEL_TYPE", "HYBRID")
     hidden_dim = int(os.getenv("HIDDEN_DIM", "64"))
     output_dim = int(os.getenv("OUTPUT_DIM", "3"))
@@ -434,6 +504,12 @@ def _init_trainer(input_dim: int) -> LocalTrainer:
 
 
 def _format_prediction(tx_id: int, predicted_label: int, probabilities: torch.Tensor, known_label: Optional[int]) -> InferencePrediction:
+    """
+    Converts a single raw model output (predicted class index + probability
+    vector) into the `InferencePrediction` response shape, including the
+    human-readable class name and, if available, the transaction's known
+    ground-truth label.
+    """
     return InferencePrediction(
         tx_id=int(tx_id),
         predicted_class=LABEL_NAMES.get(int(predicted_label), "unknown"),

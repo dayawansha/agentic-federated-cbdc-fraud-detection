@@ -10,3 +10,8 @@ train-data/EllipticPlusPlus-main/
 train-data/processed/
 /.vscode/
 /bank-node/fraud-dashboard/package-lock.json
+
+# Local MLflow tracking store (created when MLFLOW_TRACKING_URI is unset
+# and code runs on the host instead of against the deployed mlflow service)
+/mlruns/
+/mlflow.db

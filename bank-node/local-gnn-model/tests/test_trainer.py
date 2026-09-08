@@ -20,26 +20,31 @@ from trainer import LocalTrainer
 
 
 class SimpleGraphModel(nn.Module):
+    """A minimal single-layer stand-in for FraudGNN, used to keep trainer tests fast and deterministic."""
     def __init__(self):
         super().__init__()
         self.linear = nn.Linear(2, 2, bias=False)
 
     def forward(self, x, _edge_index):
+        """Ignores graph structure entirely and just classifies node features linearly."""
         return F.log_softmax(self.linear(x), dim=1)
 
 
 class FakeData:
+    """Lightweight stand-in for a PyTorch Geometric `Data` object, holding just what LocalTrainer needs."""
     def __init__(self, x, y, edge_index):
         self.x = x
         self.y = y
         self.edge_index = edge_index
 
     def to(self, _device):
+        """No-op device transfer (tests run on CPU only), mirrors the real Data.to() API."""
         return self
 
 
 class TestLocalTrainerFedProx(unittest.TestCase):
     def test_train_epoch_adds_fedprox_penalty_against_captured_reference(self):
+        """Verifies FedProx mode adds a positive proximal penalty once local weights drift from the captured global reference."""
         torch.manual_seed(7)
         model = SimpleGraphModel()
         trainer = LocalTrainer(model=model, lr=0.0, weight_decay=0.0)
@@ -61,6 +66,7 @@ class TestLocalTrainerFedProx(unittest.TestCase):
         self.assertGreater(total_loss, trainer.last_base_loss)
 
     def test_train_epoch_uses_confident_pseudo_labels_in_sparse_mode(self):
+        """Verifies that in sparse-label mode, high-confidence pseudo-labels on unlabeled nodes contribute a positive loss term."""
         torch.manual_seed(11)
         model = SimpleGraphModel()
         trainer = LocalTrainer(model=model, lr=0.0, weight_decay=0.0)
@@ -88,6 +94,7 @@ class TestLocalTrainerFedProx(unittest.TestCase):
         self.assertGreater(trainer.last_pseudo_labeled_samples, 0)
 
     def test_label_propagation_updates_unknown_labels(self):
+        """Verifies label propagation assigns a confident label to an unknown node connected to a known-labeled neighbor."""
         model = SimpleGraphModel()
         trainer = LocalTrainer(model=model)
         trainer.configure_training(use_label_propagation=True)

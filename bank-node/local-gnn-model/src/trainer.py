@@ -37,6 +37,11 @@ class LocalTrainer:
     on a bank's local transaction database.
     """
     def __init__(self, model, lr=0.01, weight_decay=5e-4):
+        """
+        Wraps a GNN `model` with an Adam optimizer and default training state
+        (FedAvg strategy, no FedProx/pseudo-labeling/label-propagation active).
+        Moves the model onto GPU if available, otherwise CPU.
+        """
         # 'self.model' is the GNN neural network model itself
         self.model = model
         

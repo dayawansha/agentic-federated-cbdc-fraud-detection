@@ -12,8 +12,6 @@ ENV PIP_DEFAULT_TIMEOUT=19000
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install .
 
-# Copy shared modules
-COPY shared/ /app/shared/
 
 EXPOSE 9005
 

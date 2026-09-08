@@ -48,18 +48,20 @@ try:
 except Exception:  # pragma: no cover - optional dependency in tests
     redis = None
 
-# Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+# Add this service's own src/ directory to sys.path so its local
+# schemas/ and reasoning/ packages are importable (this service is
+# fully self-contained, no shared/ package across services).
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from shared.schemas.models import (
+from schemas.models import (
     WeightNegotiationRequest,
     WeightNegotiationItem,
     WeightNegotiationResponse,
     FraudPatternProposal,
     ConsensusVote,
 )
-from shared.reasoning.engine import get_reasoning_engine
-from shared.reasoning.inference_rules import infer_aggregation_strategy
+from reasoning.engine import get_reasoning_engine
+from reasoning.inference_rules import infer_aggregation_strategy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

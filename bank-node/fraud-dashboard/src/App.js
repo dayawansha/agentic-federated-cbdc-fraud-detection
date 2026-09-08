@@ -48,11 +48,52 @@ const COLORS = {
   low: '#16a34a',
   neutral: '#2563eb',
   neutralSoft: '#93c5fd',
-  bg: '#f8fafc',
+  bg: '#f4f6fb',
   card: '#ffffff',
-  text: '#111827',
-  subtext: '#4b5563',
-  border: '#d1d5db',
+  text: '#0f172a',
+  subtext: '#64748b',
+  border: '#e5e9f2',
+  success: '#16a34a',
+  successSoft: '#f0fdf4',
+  warning: '#d97706',
+  warningSoft: '#fffbeb',
+  danger: '#dc2626',
+  dangerSoft: '#fef2f2',
+  info: '#2563eb',
+  infoSoft: '#eff6ff',
+  mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+};
+
+const TONE_MAP = {
+  success: { fg: COLORS.success, bg: COLORS.successSoft },
+  warning: { fg: COLORS.warning, bg: COLORS.warningSoft },
+  danger: { fg: COLORS.danger, bg: COLORS.dangerSoft },
+  info: { fg: COLORS.info, bg: COLORS.infoSoft },
+  neutral: { fg: COLORS.subtext, bg: '#f8fafc' },
+};
+
+const ICONS = {
+  alerts: '⚠️',
+  accuracy: '\u{1F3AF}',
+  graph: '\u{1F578}️',
+  confidence: '\u{1F4CA}',
+  risk: '\u{1F6A8}',
+  agent: '\u{1F916}',
+  services: '\u{1F50C}',
+  shortcuts: '\u{1F517}',
+  kafka: '\u{1F4E1}',
+  redis: '\u{1F5C3}️',
+  pie: '\u{1F967}',
+  bars: '\u{1F4C8}',
+  sources: '\u{1F9ED}',
+  accounts: '\u{1F3E6}',
+  timeline: '⏱️',
+  metrics: '\u{1F9EA}',
+  watchlist: '\u{1F440}',
+  registry: '\u{1F4DA}',
+  trends: '\u{1F4C9}',
+  feed: '\u{1F4EC}',
+  endpoints: '\u{1F9ED}',
 };
 
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low'];
@@ -89,19 +130,22 @@ function StatusPill({ label, healthy }) {
         alignItems: 'center',
         gap: 6,
         borderRadius: 999,
-        padding: '4px 10px',
+        padding: '5px 12px',
         fontSize: 12,
         fontWeight: 700,
-        color: healthy ? '#166534' : '#991b1b',
-        background: healthy ? '#dcfce7' : '#fee2e2',
+        letterSpacing: '0.01em',
+        color: healthy ? '#15803d' : '#b91c1c',
+        background: healthy ? COLORS.successSoft : COLORS.dangerSoft,
+        border: `1px solid ${healthy ? '#bbf7d0' : '#fecaca'}`,
       }}
     >
       <span
         style={{
-          width: 8,
-          height: 8,
+          width: 7,
+          height: 7,
           borderRadius: '50%',
-          background: healthy ? '#16a34a' : '#dc2626',
+          background: healthy ? COLORS.success : COLORS.danger,
+          boxShadow: healthy ? '0 0 0 3px rgba(22,163,74,0.15)' : '0 0 0 3px rgba(220,38,38,0.15)',
         }}
       />
       {label}
@@ -117,12 +161,23 @@ function ActionButton({ href, label, background = COLORS.neutral }) {
       rel="noreferrer"
       style={{
         display: 'inline-block',
-        padding: '10px 14px',
-        borderRadius: 8,
+        padding: '10px 16px',
+        borderRadius: 9,
         background,
         color: '#fff',
         textDecoration: 'none',
         fontWeight: 700,
+        fontSize: 13,
+        boxShadow: `0 4px 10px ${background}40`,
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = `0 6px 14px ${background}55`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = `0 4px 10px ${background}40`;
       }}
     >
       {label}
@@ -130,33 +185,58 @@ function ActionButton({ href, label, background = COLORS.neutral }) {
   );
 }
 
-function StatCard({ title, value, subtitle }) {
+function StatCard({ icon, title, value, subtitle, tone = 'neutral' }) {
+  const toneColor = TONE_MAP[tone] || TONE_MAP.neutral;
   return (
     <div
       style={{
+        position: 'relative',
         background: COLORS.card,
         border: `1px solid ${COLORS.border}`,
-        borderRadius: 12,
-        padding: 18,
-        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+        borderRadius: 14,
+        padding: '18px 18px 18px 20px',
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.subtext }}>{title}</div>
-      <div style={{ marginTop: 10, fontSize: 28, fontWeight: 800, color: COLORS.text }}>{value}</div>
-      <div style={{ marginTop: 6, fontSize: 13, color: COLORS.subtext }}>{subtitle}</div>
+      <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, background: toneColor.fg }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.subtext, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {title}
+        </div>
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 9,
+            background: toneColor.bg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 15,
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div style={{ marginTop: 12, fontSize: 30, fontWeight: 800, color: COLORS.text, letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ marginTop: 6, fontSize: 12.5, color: COLORS.subtext, lineHeight: 1.4 }}>{subtitle}</div>
     </div>
   );
 }
 
-function SectionCard({ title, subtitle, children, action }) {
+function SectionCard({ icon, title, subtitle, children, action }) {
   return (
     <section
       style={{
         background: COLORS.card,
         border: `1px solid ${COLORS.border}`,
-        borderRadius: 14,
-        padding: 18,
-        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+        borderRadius: 16,
+        padding: 20,
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+        breakInside: 'avoid',
+        WebkitColumnBreakInside: 'avoid',
+        marginBottom: 16,
       }}
     >
       <div
@@ -165,12 +245,31 @@ function SectionCard({ title, subtitle, children, action }) {
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           gap: 12,
-          marginBottom: 16,
+          marginBottom: 18,
         }}
       >
-        <div>
-          <h3 style={{ margin: 0, color: COLORS.text }}>{title}</h3>
-          {subtitle ? <p style={{ margin: '6px 0 0', color: COLORS.subtext }}>{subtitle}</p> : null}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          {icon ? (
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: COLORS.infoSoft,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 16,
+                flexShrink: 0,
+              }}
+            >
+              {icon}
+            </div>
+          ) : null}
+          <div>
+            <h3 style={{ margin: 0, color: COLORS.text, fontSize: 16.5, fontWeight: 700, letterSpacing: '-0.01em' }}>{title}</h3>
+            {subtitle ? <p style={{ margin: '5px 0 0', color: COLORS.subtext, fontSize: 13, lineHeight: 1.5 }}>{subtitle}</p> : null}
+          </div>
         </div>
         {action}
       </div>
@@ -179,17 +278,17 @@ function SectionCard({ title, subtitle, children, action }) {
   );
 }
 
-function AccessPanel({ accent, eyebrow, title, description, href, actionLabel, status, statusCaption, children }) {
+function AccessPanel({ icon, accent, eyebrow, title, description, href, actionLabel, status, statusCaption, children }) {
   return (
     <div
       style={{
         display: 'grid',
         gap: 16,
         padding: 18,
-        border: `1px solid ${COLORS.border}`,
+        border: `1px solid ${accent}30`,
         borderRadius: 16,
-        background: `linear-gradient(180deg, ${accent}14 0%, ${COLORS.card} 38%)`,
-        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)',
+        background: `linear-gradient(160deg, ${accent}12 0%, ${COLORS.card} 42%)`,
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
       }}
     >
       <div>
@@ -222,8 +321,27 @@ function AccessPanel({ accent, eyebrow, title, description, href, actionLabel, s
             </div>
           ) : null}
         </div>
-        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, color: COLORS.text }}>{title}</div>
-        <p style={{ margin: '8px 0 0', color: COLORS.subtext, lineHeight: 1.5 }}>{description}</p>
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          {icon ? (
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: `${accent}1a`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 17,
+                flexShrink: 0,
+              }}
+            >
+              {icon}
+            </div>
+          ) : null}
+          <div style={{ fontSize: 21, fontWeight: 800, color: COLORS.text, letterSpacing: '-0.01em' }}>{title}</div>
+        </div>
+        <p style={{ margin: '8px 0 0', color: COLORS.subtext, lineHeight: 1.5, fontSize: 13.5 }}>{description}</p>
       </div>
       {children}
       <div
@@ -250,15 +368,53 @@ function EmptyState({ text }) {
       style={{
         minHeight: 240,
         display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
         alignItems: 'center',
         justifyContent: 'center',
         color: COLORS.subtext,
-        border: `1px dashed ${COLORS.border}`,
-        borderRadius: 12,
-        background: '#f8fafc',
+        border: `1.5px dashed ${COLORS.border}`,
+        borderRadius: 14,
+        background: '#fafbfd',
+        fontSize: 13.5,
       }}
     >
+      <div style={{ fontSize: 22, opacity: 0.5 }}>&#128203;</div>
       {text}
+    </div>
+  );
+}
+
+function EndpointChip({ label, value, mono = true }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 3,
+        padding: '10px 12px',
+        borderRadius: 10,
+        background: '#f8fafc',
+        border: `1px solid ${COLORS.border}`,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.subtext, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: COLORS.text,
+          fontFamily: mono ? COLORS.mono : 'inherit',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+        title={value}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -749,23 +905,46 @@ function App() {
       ? `${privacyBudget.total_spent_delta.toExponential(2)} / ${privacyBudget.delta.toExponential(2)}`
       : 'N/A';
 
+  const alertsTone = analytics.criticalOrHigh > 0 ? 'danger' : alerts.length > 0 ? 'warning' : 'success';
+  const accuracyTone =
+    typeof modelAccuracy !== 'number' ? 'neutral' : modelAccuracy >= 0.85 ? 'success' : modelAccuracy >= 0.7 ? 'warning' : 'danger';
+  const riskTone = analytics.highRiskPredictions.length > 0 ? 'danger' : 'success';
+
   return (
     <div
       style={{
         minHeight: '100vh',
-        background: COLORS.bg,
+        background: `radial-gradient(1200px 600px at 8% -10%, #eef2ff 0%, ${COLORS.bg} 45%)`,
         color: COLORS.text,
-        fontFamily: 'Inter, Arial, sans-serif',
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif",
       }}
     >
-      <div style={{ maxWidth: 1440, margin: '0 auto', padding: 24 }}>
-        <header style={{ marginBottom: 24 }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '28px 24px 40px' }}>
+        <header style={{ marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${COLORS.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 32 }}>CBDC Fraud Detection Dashboard</h1>
-              <p style={{ margin: '8px 0 0', color: COLORS.subtext, maxWidth: 900 }}>
-                Real-time operational view of local training, live fraud alerts, transaction graph activity, and supporting service health.
-              </p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 13,
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 22,
+                  flexShrink: 0,
+                  boxShadow: '0 6px 16px rgba(37, 99, 235, 0.35)',
+                }}
+              >
+                &#128737;&#65039;
+              </div>
+              <div>
+                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em' }}>CBDC Fraud Detection</h1>
+                <p style={{ margin: '5px 0 0', color: COLORS.subtext, maxWidth: 620, fontSize: 13.5, lineHeight: 1.5 }}>
+                  Real-time operational view of local training, live fraud alerts, transaction graph activity, and supporting service health.
+                </p>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <StatusPill label={allCoreServicesHealthy ? 'Core Services Healthy' : 'Service Attention Needed'} healthy={allCoreServicesHealthy} />
@@ -783,26 +962,36 @@ function App() {
           }}
         >
           <StatCard
+            icon={ICONS.alerts}
+            tone={alertsTone}
             title="Fraud Alerts"
             value={alerts.length}
             subtitle={`${analytics.criticalOrHigh} high/critical alerts, ${alertSummary.recent_detector_alerts || 0} detected from transaction stream`}
           />
           <StatCard
+            icon={ICONS.accuracy}
+            tone={accuracyTone}
             title="Model Accuracy"
             value={typeof modelAccuracy === 'number' ? `${(modelAccuracy * 100).toFixed(2)}%` : 'N/A'}
             subtitle={typeof modelLoss === 'number' ? `Latest loss ${modelLoss.toFixed(4)}` : 'Awaiting latest training metrics'}
           />
           <StatCard
+            icon={ICONS.graph}
+            tone="info"
             title="Graph Accounts"
             value={typeof totalTransactions === 'number' ? totalTransactions : 'N/A'}
             subtitle="Current transaction-graph account snapshot"
           />
           <StatCard
+            icon={ICONS.confidence}
+            tone="info"
             title="Avg Alert Confidence"
             value={typeof analytics.avgConfidence === 'number' ? `${(analytics.avgConfidence * 100).toFixed(1)}%` : 'N/A'}
             subtitle={`History source: ${alertSummary.persistence_mode || 'unknown'}`}
           />
           <StatCard
+            icon={ICONS.risk}
+            tone={riskTone}
             title="High-Risk Predictions"
             value={analytics.highRiskPredictions.length}
             subtitle={
@@ -815,61 +1004,126 @@ function App() {
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr',
-            gap: 16,
-            marginBottom: 16,
+            columns: '3 380px',
+            columnGap: 16,
           }}
         >
           <SectionCard
+            icon={ICONS.agent}
             title="Operational Snapshot"
             subtitle="Live agent status, round metadata, and supporting service availability."
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-              <div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div><strong>Agent ID:</strong> {agentStatus?.agent_id || 'N/A'}</div>
-                  <div><strong>Last Round:</strong> {agentStatus?.last_round_id || 'N/A'}</div>
-                  <div><strong>Last Update:</strong> {formatTimestamp(agentStatus?.last_update_at)}</div>
-                  <div><strong>Update Age:</strong> {formatRelativeTime(agentStatus?.last_update_at)}</div>
-                  <div><strong>Last Inference:</strong> {formatTimestamp(agentStatus?.last_inference_at)}</div>
-                  <div><strong>Data Feeds:</strong> {fetchState.statusLoaded && fetchState.alertsLoaded && fetchState.graphLoaded && fetchState.inferenceLoaded ? 'Loaded' : 'Refreshing...'}</div>
-                  <div><strong>Alert Detector:</strong> {alertSummary.detector_enabled ? 'Transaction Stream Active' : 'Unavailable'}</div>
-                  <div><strong>Alert Sources:</strong> {analytics.sourceCounts.length > 0 ? analytics.sourceCounts.map((item) => `${item.source} (${item.count})`).join(', ') : 'N/A'}</div>
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ display: 'grid', gap: 8, alignContent: 'start' }}>
+                {[
+                  ['Agent ID', agentStatus?.agent_id || 'N/A'],
+                  ['Last Round', agentStatus?.last_round_id || 'N/A'],
+                  ['Last Update', formatTimestamp(agentStatus?.last_update_at)],
+                  ['Update Age', formatRelativeTime(agentStatus?.last_update_at)],
+                  ['Last Inference', formatTimestamp(agentStatus?.last_inference_at)],
+                  [
+                    'Data Feeds',
+                    fetchState.statusLoaded && fetchState.alertsLoaded && fetchState.graphLoaded && fetchState.inferenceLoaded
+                      ? 'Loaded'
+                      : 'Refreshing…',
+                  ],
+                  ['Alert Detector', alertSummary.detector_enabled ? 'Transaction Stream Active' : 'Unavailable'],
+                  [
+                    'Alert Sources',
+                    analytics.sourceCounts.length > 0
+                      ? analytics.sourceCounts.map((item) => `${item.source} (${item.count})`).join(', ')
+                      : 'N/A',
+                  ],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '8px 2px',
+                      borderBottom: `1px solid ${COLORS.border}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 12.5, color: COLORS.subtext, fontWeight: 600 }}>{label}</span>
+                    <span
+                      style={{
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: COLORS.text,
+                        textAlign: 'right',
+                        maxWidth: '65%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={String(value)}
+                    >
+                      {value}
+                    </span>
+                  </div>
+                ))}
               </div>
               <div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {serviceDefinitions.map((service) => (
-                    <div
-                      key={service.name}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        border: `1px solid ${COLORS.border}`,
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        background: '#f9fafb',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 700 }}>{service.label}</div>
-                        <div style={{ fontSize: 12, color: COLORS.subtext }}>{service.url}</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {serviceDefinitions.map((service) => {
+                    const healthy = Boolean(serviceHealth[service.name]);
+                    return (
+                      <div
+                        key={service.name}
+                        style={{
+                          position: 'relative',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          border: `1px solid ${COLORS.border}`,
+                          borderRadius: 10,
+                          padding: '9px 12px 9px 14px',
+                          background: '#fafbfd',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            bottom: 0,
+                            width: 3,
+                            background: healthy ? COLORS.success : COLORS.danger,
+                          }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{service.label}</div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: COLORS.subtext,
+                              fontFamily: COLORS.mono,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {service.url}
+                          </div>
+                        </div>
+                        <StatusPill label={healthy ? 'Healthy' : 'Unavailable'} healthy={healthy} />
                       </div>
-                      <StatusPill label={serviceHealth[service.name] ? 'Healthy' : 'Unavailable'} healthy={Boolean(serviceHealth[service.name])} />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </SectionCard>
 
           <SectionCard
+            icon={ICONS.shortcuts}
             title="Operator Shortcuts"
             subtitle="Separated access zones for streaming observability and workflow-state inspection."
           >
-            <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 18 }}>
               <div
                 style={{
                   display: 'grid',
@@ -878,6 +1132,7 @@ function App() {
                 }}
               >
                 <AccessPanel
+                  icon={ICONS.kafka}
                   accent={COLORS.neutral}
                   eyebrow="Streaming Observability"
                   title="Kafka UI"
@@ -887,13 +1142,14 @@ function App() {
                   status={<StatusPill label={operatorShortcutHealth.kafka ? 'Healthy' : 'Unavailable'} healthy={operatorShortcutHealth.kafka} />}
                   statusCaption="Kafka Service"
                 >
-                  <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'grid', gap: 8 }}>
                     <div><strong>Cluster:</strong> federated-fraud-kafka</div>
                     <div><strong>Broker:</strong> kafka:9092 (id: 1)</div>
                     <div><strong>Pipeline:</strong> {`${alertSummary.transaction_topic || 'transactions.events'} -> alerting -> ${alertSummary.alerts_topic || 'fraud.alerts'}`}</div>
                   </div>
                 </AccessPanel>
                 <AccessPanel
+                  icon={ICONS.redis}
                   accent="#7c3aed"
                   eyebrow="Workflow State"
                   title="Redis Insight"
@@ -903,45 +1159,31 @@ function App() {
                   status={<StatusPill label={operatorShortcutHealth.redis ? 'Healthy' : 'Unavailable'} healthy={operatorShortcutHealth.redis} />}
                   statusCaption="Redis Service"
                 >
-                  <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'grid', gap: 8 }}>
                     <div><strong>Store:</strong> redis:6379</div>
                     <div><strong>Purpose:</strong> workflow state for `agentic-coordinator`</div>
                     <div><strong>Access URL:</strong> {redisInsightUrl}</div>
                   </div>
                 </AccessPanel>
               </div>
-              <div><strong>CBDC Fraud Detection Dashboard:</strong> {dashboardUiUrl}</div>
-              <div><strong>Notification Channels:</strong> {alertSummary.outbound_channels.filter((item) => item.configured).map((item) => item.channel).join(', ') || 'None configured'}</div>
-              <div><strong>Transaction Graph API:</strong> {serviceDefinitions.find((item) => item.name === 'transaction-graph')?.url}</div>
-              <div><strong>Alerting API:</strong> {serviceDefinitions.find((item) => item.name === 'alerting')?.url}</div>
-              <div><strong>Alerting WebSocket:</strong> {`${wsOrigin}/ws/alerts`}</div>
-              <div style={{ display: 'grid', gap: 8, padding: 12, border: `1px solid ${COLORS.border}`, borderRadius: 10, background: '#f9fafb' }}>
-                <div style={{ fontWeight: 700 }}>Core Service Access Index</div>
-                <div>{[
-                  `Dashboard ${dashboardUiUrl}`,
-                  `Kafka UI ${kafkaUiUrl}`,
-                  `Model Registry ${serviceDefinitions.find((item) => item.name === 'model-registry')?.url}`,
-                  `Policy Manager ${serviceDefinitions.find((item) => item.name === 'policy-manager')?.url}`,
-                  `Local Agent ${serviceDefinitions.find((item) => item.name === 'local-agent')?.url}`,
-                  `Local GNN ${serviceDefinitions.find((item) => item.name === 'local-gnn')?.url}`,
-                  `Privacy Layer ${serviceDefinitions.find((item) => item.name === 'privacy-layer')?.url}`,
-                  `Transaction Graph ${serviceDefinitions.find((item) => item.name === 'transaction-graph')?.url}`,
-                  `Alerting ${serviceDefinitions.find((item) => item.name === 'alerting')?.url}`,
-                ].join(' | ')}</div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>{ICONS.endpoints} Endpoint Directory</span>
+                  <span style={{ fontSize: 11.5, color: COLORS.subtext }}>Notifications: {alertSummary.outbound_channels.filter((item) => item.configured).map((item) => item.channel).join(', ') || 'none configured'}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+                  <EndpointChip label="Dashboard" value={dashboardUiUrl} />
+                  <EndpointChip label="Alerting WebSocket" value={`${wsOrigin}/ws/alerts`} />
+                  {serviceDefinitions.map((service) => (
+                    <EndpointChip key={service.name} label={service.label} value={service.url} />
+                  ))}
+                </div>
               </div>
             </div>
           </SectionCard>
-        </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <SectionCard title="Alerts by Severity" subtitle="Current in-memory distribution from the Alerting service.">
+          <SectionCard icon={ICONS.pie} title="Alerts by Severity" subtitle="Current in-memory distribution from the Alerting service.">
             {analytics.severityCounts.length === 0 ? (
               <EmptyState text="No recent alerts to visualize." />
             ) : (
@@ -961,7 +1203,7 @@ function App() {
             )}
           </SectionCard>
 
-          <SectionCard title="Most Alerted Transactions" subtitle="Top transaction IDs by recent alert count.">
+          <SectionCard icon={ICONS.bars} title="Most Alerted Transactions" subtitle="Top transaction IDs by recent alert count.">
             {analytics.alertsByTransaction.length === 0 ? (
               <EmptyState text="No alert-heavy transactions yet." />
             ) : (
@@ -979,25 +1221,25 @@ function App() {
             )}
           </SectionCard>
 
-          <SectionCard title="Alert Sources" subtitle="Distribution of recent alerts by producing detector or upstream source.">
+          <SectionCard icon={ICONS.sources} title="Alert Sources" subtitle="Distribution of recent alerts by producing detector or upstream source.">
             {analytics.sourceCounts.length === 0 ? (
               <EmptyState text="No alert-source distribution available yet." />
             ) : (
               <div style={{ height: 260 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.sourceCounts}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="source" hide />
-                    <YAxis allowDecimals={false} />
+                  <BarChart data={analytics.sourceCounts} barCategoryGap="35%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="source" tick={{ fontSize: 12 }} />
+                    <YAxis allowDecimals={false} width={32} />
                     <Tooltip />
-                    <Bar dataKey="count" fill={COLORS.high} radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" fill={COLORS.high} radius={[6, 6, 0, 0]} maxBarSize={64} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
           </SectionCard>
 
-          <SectionCard title="Most Active Accounts" subtitle="Accounts with the highest combined sent/received activity.">
+          <SectionCard icon={ICONS.accounts} title="Most Active Accounts" subtitle="Accounts with the highest combined sent/received activity.">
             {analytics.topActiveAccounts.length === 0 ? (
               <EmptyState text="Transaction graph activity is not available yet." />
             ) : (
@@ -1016,66 +1258,183 @@ function App() {
               </div>
             )}
           </SectionCard>
-        </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr',
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <SectionCard title="Alert Timeline" subtitle="Sequential view of recent alert intensity across the current window.">
+          <SectionCard icon={ICONS.timeline} title="Alert Timeline" subtitle="Sequential view of recent alert intensity across the current window.">
             {analytics.alertTimeline.length === 0 ? (
               <EmptyState text="No alert timeline available yet." />
             ) : (
-              <div style={{ height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analytics.alertTimeline}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="index" />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="alerts" stroke={COLORS.neutral} strokeWidth={3} dot={false} name="Alert Volume" />
-                    <Line type="monotone" dataKey="severityScore" stroke={COLORS.high} strokeWidth={2} dot={false} name="Severity Score" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <>
+                <div style={{ height: 280 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={analytics.alertTimeline}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="index" />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="alerts" stroke={COLORS.neutral} strokeWidth={3} dot={false} name="Alert Volume" />
+                      <Line type="monotone" dataKey="severityScore" stroke={COLORS.high} strokeWidth={2} dot={false} name="Severity Score" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: 10,
+                    marginTop: 18,
+                  }}
+                >
+                  {[
+                    {
+                      label: 'Peak Severity',
+                      value: SEVERITY_ORDER.find((s) => alerts.some((a) => String(a.severity || '').toLowerCase() === s)) || 'N/A',
+                      tone: 'danger',
+                    },
+                    {
+                      label: 'Trend',
+                      value: (() => {
+                        const points = analytics.alertTimeline;
+                        if (points.length < 2) return 'Stable';
+                        const mid = Math.floor(points.length / 2);
+                        const firstAvg = points.slice(0, mid).reduce((s, p) => s + p.severityScore, 0) / Math.max(mid, 1);
+                        const secondAvg = points.slice(mid).reduce((s, p) => s + p.severityScore, 0) / Math.max(points.length - mid, 1);
+                        if (secondAvg > firstAvg + 0.15) return 'Rising';
+                        if (secondAvg < firstAvg - 0.15) return 'Falling';
+                        return 'Stable';
+                      })(),
+                      tone: 'info',
+                    },
+                    {
+                      label: 'Latest Alert',
+                      value: alerts.length > 0 ? formatRelativeTime(alerts[0]?.received_at || alerts[0]?.timestamp) : 'N/A',
+                      tone: 'neutral',
+                    },
+                    {
+                      label: 'Window Size',
+                      value: `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`,
+                      tone: 'neutral',
+                    },
+                  ].map((item) => {
+                    const tone = TONE_MAP[item.tone] || TONE_MAP.neutral;
+                    return (
+                      <div
+                        key={item.label}
+                        style={{
+                          border: `1px solid ${COLORS.border}`,
+                          borderRadius: 10,
+                          padding: '10px 12px',
+                          background: '#fafbfd',
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.subtext, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {item.label}
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: tone.fg, textTransform: 'capitalize' }}>
+                          {item.value}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 10 }}>Recent Highlights</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {alerts.slice(0, 5).map((alert, index) => (
+                      <div
+                        key={alert.alert_id || `${index}-${alert.txId || alert.tx_id || 'tx'}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                          border: `1px solid ${COLORS.border}`,
+                          borderRadius: 10,
+                          padding: '9px 12px',
+                          background: '#fafbfd',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              borderRadius: 999,
+                              padding: '3px 8px',
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              textTransform: 'capitalize',
+                              background: `${severityColor(alert.severity)}18`,
+                              color: severityColor(alert.severity),
+                              flexShrink: 0,
+                            }}
+                          >
+                            {alert.severity || 'unknown'}
+                          </span>
+                          <span
+                            style={{
+                              fontFamily: COLORS.mono,
+                              fontSize: 12,
+                              color: COLORS.text,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {alert.txId || alert.tx_id || alert.alert_id || 'N/A'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 11.5, color: COLORS.subtext, flexShrink: 0 }}>
+                          {formatRelativeTime(alert.received_at || alert.timestamp)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
           </SectionCard>
 
-          <div style={{ display: 'grid', gap: 16 }}>
-            <SectionCard title="Training Metrics" subtitle="Latest metrics reported by the Local Agent after a training round.">
-              <div style={{ display: 'grid', gap: 12 }}>
-                {agentStatus?.last_metrics && Object.keys(agentStatus.last_metrics).length > 0 ? (
-                  Object.entries(agentStatus.last_metrics).map(([key, value]) => (
+          <SectionCard icon={ICONS.metrics} title="Training Metrics" subtitle="Latest metrics reported by the Local Agent after a training round.">
+              {agentStatus?.last_metrics && Object.keys(agentStatus.last_metrics).length > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                    gap: 8,
+                  }}
+                >
+                  {Object.entries(agentStatus.last_metrics).map(([key, value]) => (
                     <div
                       key={key}
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        gap: 10,
                         border: `1px solid ${COLORS.border}`,
-                        borderRadius: 10,
-                        padding: '12px 14px',
-                        background: '#f9fafb',
+                        borderRadius: 9,
+                        padding: '9px 12px',
+                        background: '#fafbfd',
                       }}
                     >
-                      <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                      <span style={{ fontFamily: 'monospace', color: COLORS.subtext }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, textTransform: 'capitalize', color: COLORS.text }}>
+                        {key.replace(/_/g, ' ')}
+                      </span>
+                      <span style={{ fontFamily: COLORS.mono, fontSize: 12, color: COLORS.subtext, fontWeight: 600 }}>
                         {typeof value === 'number' ? value.toFixed(4) : String(value)}
                       </span>
                     </div>
-                  ))
-                ) : (
-                  <EmptyState text="Training metrics have not been reported yet." />
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState text="Training metrics have not been reported yet." />
+              )}
             </SectionCard>
 
             <SectionCard
+              icon={ICONS.watchlist}
               title="Inference Watchlist"
               subtitle="Top ranked Local GNN fraud predictions routed through the Local Agent."
             >
@@ -1121,18 +1480,9 @@ function App() {
                 </div>
               )}
             </SectionCard>
-          </div>
-        </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1.2fr 1fr',
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
           <SectionCard
+            icon={ICONS.registry}
             title="Model Registry & Governance"
             subtitle="Combines backend model-registry history with live governance policy, privacy budget, and audit data from policy-manager."
           >
@@ -1193,107 +1543,103 @@ function App() {
                   gap: 16,
                 }}
               >
-                <div style={{ overflowX: 'auto', maxHeight: '320px' }}>
+                <div>
                   {modelVersions.length === 0 ? (
                     <EmptyState text="No model versions registered yet." />
                   ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: '#f3f4f6' }}>
-                          {['Status', 'Version ID', 'Created At', 'Type', 'Metrics'].map((heading) => (
-                            <th
-                              key={heading}
-                              style={{
-                                textAlign: 'left',
-                                padding: '10px 12px',
-                                borderBottom: `1px solid ${COLORS.border}`,
-                                color: COLORS.subtext,
-                                fontSize: 13,
-                              }}
-                            >
-                              {heading}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {modelVersions.map((mv) => {
-                          const isActive = activeModelVersionId && mv.version_id === activeModelVersionId;
-                          return (
-                            <tr key={mv.version_id} style={{ background: isActive ? '#f0fdf4' : 'transparent' }}>
-                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
-                                {isActive ? (
-                                  <span
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      borderRadius: 999,
-                                      padding: '2px 8px',
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      color: '#15803d',
-                                      background: '#dcfce7',
-                                    }}
-                                  >
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
-                                    Active
-                                  </span>
-                                ) : (
-                                  <span
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      borderRadius: 999,
-                                      padding: '2px 8px',
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                      color: COLORS.subtext,
-                                      background: '#f3f4f6',
-                                    }}
-                                  >
-                                    Registered
-                                  </span>
-                                )}
-                              </td>
-                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontFamily: 'monospace', fontWeight: isActive ? 700 : 'normal' }}>
+                    <div style={{ display: 'grid', gap: 10, maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+                      {modelVersions.map((mv) => {
+                        const isActive = activeModelVersionId && mv.version_id === activeModelVersionId;
+                        return (
+                          <div
+                            key={mv.version_id}
+                            style={{
+                              position: 'relative',
+                              border: `1px solid ${isActive ? '#bbf7d0' : COLORS.border}`,
+                              borderRadius: 12,
+                              padding: '12px 14px 12px 16px',
+                              background: isActive ? COLORS.successSoft : '#fafbfd',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {isActive ? (
+                              <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, background: COLORS.success }} />
+                            ) : null}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontFamily: COLORS.mono,
+                                  fontSize: 12.5,
+                                  fontWeight: 700,
+                                  color: COLORS.text,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={mv.version_id}
+                              >
                                 {mv.version_id}
-                              </td>
-                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
-                                {formatTimestamp(mv.created_at)}
-                              </td>
-                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}` }}>
+                              </span>
+                              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    borderRadius: 999,
+                                    padding: '2px 8px',
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    color: isActive ? '#15803d' : COLORS.subtext,
+                                    background: isActive ? '#dcfce7' : '#f3f4f6',
+                                  }}
+                                >
+                                  {isActive ? (
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a' }} />
+                                  ) : null}
+                                  {isActive ? 'Active' : 'Registered'}
+                                </span>
                                 <span
                                   style={{
                                     display: 'inline-block',
                                     borderRadius: 999,
-                                    padding: '2px 6px',
-                                    fontSize: 11,
+                                    padding: '2px 8px',
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
                                     background: mv.is_global ? '#e0f2fe' : '#fef3c7',
                                     color: mv.is_global ? '#0369a1' : '#b45309',
-                                    fontWeight: 600,
                                   }}
                                 >
                                   {mv.is_global ? 'Global' : 'Local'}
                                 </span>
-                              </td>
-                              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 12, fontFamily: 'monospace' }}>
-                                {mv.metrics && Object.keys(mv.metrics).length > 0 ? (
-                                  Object.entries(mv.metrics).map(([name, val]) => (
-                                    <div key={name}>
-                                      <strong>{name}:</strong> {typeof val === 'number' ? val.toFixed(4) : String(val)}
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 4, fontSize: 11.5, color: COLORS.subtext }}>{formatTimestamp(mv.created_at)}</div>
+                            {mv.metrics && Object.keys(mv.metrics).length > 0 ? (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                                  gap: 6,
+                                }}
+                              >
+                                {Object.entries(mv.metrics).map(([name, val]) => (
+                                  <div key={name} style={{ fontSize: 11, fontFamily: COLORS.mono, color: COLORS.subtext }}>
+                                    <span style={{ textTransform: 'capitalize' }}>{name.replace(/_/g, ' ')}</span>
+                                    <div style={{ color: COLORS.text, fontWeight: 700 }}>
+                                      {typeof val === 'number' ? val.toFixed(4) : String(val)}
                                     </div>
-                                  ))
-                                ) : (
-                                  <span style={{ color: COLORS.subtext }}>No metrics</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: 6, fontSize: 11.5, color: COLORS.subtext }}>No metrics</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1301,6 +1647,7 @@ function App() {
           </SectionCard>
 
           <SectionCard
+            icon={ICONS.trends}
             title="Model Performance Trends"
             subtitle="Comparing Accuracy and Loss metrics over registered versions."
           >
@@ -1310,11 +1657,20 @@ function App() {
                   <EmptyState text="Awaiting model registry versions data." />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={[...modelVersions].reverse()}>
+                    <LineChart
+                      data={[...modelVersions].reverse().map((mv) => ({
+                        version_id: mv.version_id,
+                        metrics: {
+                          accuracy:
+                            typeof mv.metrics?.accuracy === 'number' ? Math.min(1, Number(mv.metrics.accuracy.toFixed(4))) : null,
+                          loss: typeof mv.metrics?.loss === 'number' ? Math.min(1, Number(mv.metrics.loss.toFixed(4))) : null,
+                        },
+                      }))}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
-                      <YAxis domain={[0, 1]} />
-                      <Tooltip />
+                      <YAxis domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tickFormatter={(v) => v.toFixed(2)} />
+                      <Tooltip formatter={(value) => (typeof value === 'number' ? value.toFixed(4) : value)} />
                       <Legend />
                       <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
                       <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
@@ -1368,7 +1724,7 @@ function App() {
           </SectionCard>
         </div>
 
-        <SectionCard title="Recent Alerts Feed" subtitle="Live alert stream from the Alerting service, enriched with timestamps and confidence.">
+        <SectionCard icon={ICONS.feed} title="Recent Alerts Feed" subtitle="Live alert stream from the Alerting service, enriched with timestamps and confidence.">
           {alerts.length === 0 ? (
             <EmptyState text="No recent alerts available." />
           ) : (

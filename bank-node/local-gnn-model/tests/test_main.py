@@ -15,41 +15,51 @@ if str(SERVICE_SRC) not in sys.path:
 
 
 class FakeValue:
+    """Stand-in for a 0-dim torch tensor: wraps a plain Python value behind `.item()`."""
     def __init__(self, value):
         self.value = value
 
     def item(self):
+        """Returns the wrapped plain Python value, mirroring torch.Tensor.item()."""
         return self.value
 
 
 class FakeVector:
+    """Stand-in for a 1-D probability tensor, indexable like `probabilities[class_index]`."""
     def __init__(self, values):
         self.values = [FakeValue(value) for value in values]
 
     def __getitem__(self, index):
+        """Returns the FakeValue at `index`, mirroring tensor indexing."""
         return self.values[index]
 
 
 class FakePredictionList:
+    """Stand-in for a 1-D tensor of predicted class indices, indexable per node."""
     def __init__(self, values):
         self.values = [FakeValue(value) for value in values]
 
     def __getitem__(self, index):
+        """Returns the FakeValue at `index`, mirroring tensor indexing."""
         return self.values[index]
 
 
 class FakeLabelArray:
+    """Stand-in for `data.y` (ground-truth labels tensor) supporting the `.cpu().tolist()` chain used in main.py."""
     def __init__(self, values):
         self.values = list(values)
 
     def cpu(self):
+        """No-op device transfer, mirrors torch.Tensor.cpu()."""
         return self
 
     def tolist(self):
+        """Returns the labels as a plain Python list, mirroring torch.Tensor.tolist()."""
         return list(self.values)
 
 
 class FakeDataObject:
+    """Stand-in for a PyTorch Geometric `Data` object carrying just the attributes `/infer` reads."""
     def __init__(self):
         self.tx_ids = [11, 22, 33]
         self.y = FakeLabelArray([1, 0, 2])
@@ -62,6 +72,7 @@ class FakeDataObject:
 
 
 class FakeTrainer:
+    """Stand-in for LocalTrainer that records calls and returns canned results, so main.py's endpoints can be tested without real GNN training."""
     def __init__(self):
         self.set_weights_calls = []
         self.configure_calls = []
@@ -72,6 +83,7 @@ class FakeTrainer:
         self.use_label_propagation = False
 
     def set_model_weights(self, payload):
+        """Records the raw weights payload passed in, for assertion in tests."""
         self.set_weights_calls.append(payload)
 
     def configure_training(
@@ -83,6 +95,7 @@ class FakeTrainer:
         pseudo_label_confidence=0.9,
         use_label_propagation=False,
     ):
+        """Records the training configuration passed in, for assertion in tests."""
         self.use_label_propagation = use_label_propagation
         self.configure_calls.append(
             {
@@ -95,18 +108,23 @@ class FakeTrainer:
         )
 
     def capture_proximal_reference(self):
+        """Counts how many times a FedProx reference snapshot was requested."""
         self.capture_calls += 1
 
     def clear_proximal_reference(self):
+        """Counts how many times the FedProx reference snapshot was cleared."""
         self.clear_calls += 1
 
     def run_label_propagation(self, _data):
+        """Fakes label propagation with a no-op that reports zero newly labeled nodes."""
         return 0
 
     def train_epoch(self, _data):
+        """Fakes one training epoch, returning a fixed canned loss value."""
         return 0.42
 
     def evaluate(self, _data):
+        """Fakes evaluation, returning a fixed set of canned metrics."""
         return {
             "accuracy": 0.88,
             "precision": 0.84,
@@ -117,9 +135,11 @@ class FakeTrainer:
         }
 
     def get_model_weights(self):
+        """Fakes weight serialization, returning a fixed byte string."""
         return b"trained-weights"
 
     def predict(self, _data):
+        """Fakes inference, returning canned predictions and probabilities for 3 nodes."""
         return {
             "predictions": FakePredictionList([1, 0, 2]),
             "probabilities": [
@@ -131,6 +151,11 @@ class FakeTrainer:
 
 
 def _install_stub_modules():
+    """
+    Installs lightweight fake modules for torch/numpy/pandas/torch_geometric and
+    src.model/src.trainer into sys.modules before importing main.py, so these
+    heavy ML dependencies don't need to be installed/imported for these tests.
+    """
     fake_torch = types.ModuleType("torch")
     fake_torch.Tensor = object
     sys.modules.setdefault("torch", fake_torch)
@@ -167,9 +192,11 @@ main = importlib.import_module("main")
 
 class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
+        """Clears the cached trainer between tests so each test builds its own fresh instance."""
         main._init_trainer.cache_clear()
 
     async def test_trigger_training_returns_metrics_and_sample_size(self):
+        """Verifies /train with a plain FedAvg round returns training + graph metrics and base64-encoded weights."""
         trainer = FakeTrainer()
         data = types.SimpleNamespace(y=types.SimpleNamespace(__eq__=None), x=types.SimpleNamespace(shape=(3, 12)))
         data.live_graph_used = False
@@ -235,6 +262,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(trainer.capture_calls, 0)
 
     async def test_trigger_training_configures_true_fedprox_round(self):
+        """Verifies /train with strategy=FedProxGNN captures the proximal reference and reports fedprox-specific metrics."""
         trainer = FakeTrainer()
         data = types.SimpleNamespace(
             y=types.SimpleNamespace(__eq__=None),
@@ -300,6 +328,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.metrics["pseudo_label_confidence"], 0.82)
 
     async def test_run_inference_ranks_predictions_when_tx_ids_not_provided(self):
+        """Verifies /infer without explicit tx_ids ranks all transactions by illicit probability and respects `limit`."""
         trainer = FakeTrainer()
         data = FakeDataObject()
 
@@ -312,6 +341,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.predictions[0].predicted_class, "illicit")
 
     async def test_run_inference_raises_404_for_missing_tx_id(self):
+        """Verifies /infer returns a 404 listing any requested tx_ids that don't exist in the loaded graph."""
         trainer = FakeTrainer()
         data = FakeDataObject()
 
@@ -323,6 +353,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exc.exception.detail, {"missing_tx_ids": [99]})
 
     async def test_init_trainer_uses_hybrid_model_configuration_by_default(self):
+        """Verifies _init_trainer builds the model with hyperparameters read from environment variables."""
         data = types.SimpleNamespace(x=types.SimpleNamespace(shape=(3, 12)))
 
         with patch.object(main, "_load_graph_data", return_value=data), patch.object(main, "get_model", return_value=object()) as get_model_mock, patch.object(main, "LocalTrainer") as trainer_cls, patch.dict(
@@ -350,6 +381,7 @@ class TestLocalGnnModel(unittest.IsolatedAsyncioTestCase):
         trainer_cls.assert_called_once()
 
     def test_extract_numeric_transaction_id_accepts_prefixed_transaction_ids(self):
+        """Verifies _extract_numeric_transaction_id pulls the trailing digits out of prefixed node ids like 'tx-42'."""
         self.assertEqual(main._extract_numeric_transaction_id("tx-42"), 42)
         self.assertEqual(main._extract_numeric_transaction_id("transaction_0007"), 7)
 

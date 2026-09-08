@@ -41,16 +41,18 @@ from typing import Dict, List, Optional, TypedDict, Tuple
 from langgraph.graph import StateGraph, END
 import httpx
 
-# Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+# Add this service's own src/ directory to sys.path so its local
+# schemas/ and reasoning/ packages are importable (this service is
+# fully self-contained, no shared/ package across services).
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from shared.schemas.models import (
+from schemas.models import (
     WeightNegotiationRequest,
     WeightNegotiationResponse,
     FraudPatternProposal,
     ConsensusVote,
 )
-from shared.reasoning.engine import get_reasoning_engine
+from reasoning.engine import get_reasoning_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

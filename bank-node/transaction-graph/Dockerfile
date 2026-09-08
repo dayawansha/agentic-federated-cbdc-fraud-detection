@@ -26,9 +26,8 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy source code and shared modules
+# Copy source code
 COPY bank-node/transaction-graph/src/ ./src/
-COPY shared/ /app/shared/
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1

@@ -38,9 +38,11 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-# Ensure `/app` is on the import path inside the container so `shared` can be imported.
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from shared.schemas.models import PrivacyBudget
+# Add this service's own src/ directory to sys.path so its local
+# schemas/ package is importable (this service is fully self-contained,
+# no shared/ package across services).
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from schemas.models import PrivacyBudget
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, create_engine, desc, select
 from sqlalchemy.orm import declarative_base, sessionmaker
 

@@ -26,8 +26,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-deps .
 
-# Copy shared modules
-COPY shared/ /app/shared/
 
 EXPOSE 8002
 

@@ -17,8 +17,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install .
 
-# Copy shared modules
-COPY shared/ /app/shared/
 
 EXPOSE 8001
 

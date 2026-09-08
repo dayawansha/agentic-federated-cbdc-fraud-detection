@@ -54,7 +54,7 @@
 | # | What Was Built |
 |---|---|
 | C1 | **Graph-based fraud detection pipeline** — transaction graphs in Neo4j, trained with GNNs locally at each bank |
-| C2 | **Privacy-preserving update layer** — Differential Privacy noise + X25519 Secure Aggregation masking |
+| C2 | **Privacy-preserving update layer** — Differential Privacy noise + Secure Aggregation (encrypted mask shares escrowed via Policy Manager) |
 | C3 | **Agentic Q-Learning engine** — each bank node autonomously adapts its training to local hardware conditions |
 | C4 | **Containerised microservice prototype** — full end-to-end Docker Compose deployment with real-time Kafka alerting |
 
@@ -151,9 +151,10 @@ Transaction record → Neo4j graph → GNN training → raw gradients → Local 
 - Only compliant nodes are selected for the round
 
 **Phase 2 — Local Training**
-- **Agentic Coordinator** sends `global_weights + round_id + strategy` to selected nodes
-- Local Agent runs Q-learning: maps hardware state → selects epochs & noise scale
-- GNN trains on the local Neo4j subgraph
+- **Agentic Coordinator** sends a start signal (`round_id + strategy`) to each selected Bank Node
+- Bank Node **pulls the latest global weights itself** from the **Model Registry** — Coordinator does not push weights
+- Local Agent runs Q-learning: maps hardware state → selects training epochs & noise scale
+- GNN trains on the local Neo4j subgraph using the downloaded global weights as starting point
 
 **Phase 3 — Privatisation (inside each Bank Node)**
 - **Step 1 — Clip:** Each gradient update is scaled down if it is too large, so no single transaction can have an outsized influence on the model
@@ -203,7 +204,7 @@ Transaction record → Neo4j graph → GNN training → raw gradients → Local 
 | Layer | Technology | What it does |
 |---|---|---|
 | **1 — Differential Privacy** | PyTorch (custom microservice) | Clips gradients + injects Gaussian noise → provides **(ε, δ)-DP** mathematical guarantee |
-| **2 — Secure Aggregation** | X25519 Elliptic Curve Diffie-Hellman (RFC 7748) | Pairwise zero-sum masks — cancels exactly at aggregation → coordinator **cannot see individual bank updates** |
+| **2 — Secure Aggregation** | Encrypted mask shares (escrowed in **Policy Manager** PostgreSQL) | Each bank submits an encrypted mask share — aggregator decrypts and combines them to cancel privacy noise → coordinator **cannot reconstruct individual bank updates** |
 
 **Why two layers?**
 - DP protects against **membership inference** — inferring individual records from model weights
@@ -211,7 +212,7 @@ Transaction record → Neo4j graph → GNN training → raw gradients → Local 
 
 **Governance:** Privacy budgets (ε, δ) are set and enforced centrally by the **Policy Manager** — no bank node can exceed the global cap.
 
-> 💬 **Speak:** *"The privacy layer has two parts that address two different threat models. Differential privacy adds calibrated noise so no individual transaction can be reverse-engineered from the model weights — this is a provable mathematical bound, not a best-effort measure. Secure aggregation using X25519 key exchange ensures the coordinator itself cannot read any single bank's update — the pairwise masks cancel algebraically when summed. Together they close both the statistical and cryptographic privacy gaps."*
+> 💬 **Speak:** *"The privacy layer has two parts that address two different threat models. Differential privacy adds calibrated noise so no individual transaction can be reverse-engineered from the model weights — this is a provable mathematical bound, not a best-effort measure. Secure aggregation works by having each bank encrypt and escrow a mask share with the Policy Manager before the round. The aggregator then retrieves and combines those shares to cancel the masks out — so the coordinator only ever sees the true aggregate, never any individual bank's update."*
 
 ---
 
@@ -249,7 +250,7 @@ Transaction record → Neo4j graph → GNN training → raw gradients → Local 
 - ✅ A working, containerised CBDC fraud detection prototype — validated end-to-end
 - ✅ Graph-structured federated learning with mathematical (ε, δ)-differential privacy
 - ✅ Agentic Q-learning for autonomous, resource-aware training adaptation
-- ✅ Coordinator-blind aggregation via X25519 Secure Aggregation
+- ✅ Coordinator-blind aggregation via Secure Aggregation (encrypted mask shares, Policy Manager escrowed)
 
 **Limitations:**
 - No public CBDC transaction dataset exists → evaluated on Elliptic++ (Bitcoin proxy)
@@ -295,8 +296,8 @@ A: Coordinate-wise median takes the median value at each weight position across 
 **Q: What happens if a bank node drops out mid-round?**  
 A: The coordinator uses `asyncio.wait_for` with a configurable timeout (`ROUND_WAIT_SECONDS`). If a node times out, its update is discarded and the round completes with the responsive subset. The LangGraph state machine performs compensating logic — rather than a full rollback, it proceeds with clean updates, which is logged in the audit trail.
 
-**Q: How does X25519 SecAgg work in practice — how do the masks cancel?**  
-A: Each pair of banks (A and B) derive a shared secret: `S_AB = X25519(PrivKey_A, PubKey_B)`. Bank A adds `S_AB` to its weight vector; Bank B subtracts `S_AB` from its own. When the coordinator sums all updates, every `+S_AB` is cancelled by the corresponding `−S_AB`. The coordinator only sees the true gradient sum — individual bank updates are never reconstructible.
+**Q: How does Secure Aggregation work in practice — how do the masks cancel?**  
+A: Before training, each bank generates an encrypted mask share and escrows it with the Policy Manager (stored in the `secure_aggregation_masks` PostgreSQL table). After all banks submit their privatised model updates, the Federated Model Aggregator calls the Policy Manager to retrieve and decrypt those shares. It then combines them into an aggregate cancellation mask and applies it to remove the individual noise — leaving only the true gradient sum. The coordinator never holds any individual bank's unmasked update at any point.
 
 ---
 

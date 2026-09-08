@@ -8,9 +8,8 @@ from unittest.mock import patch
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 SERVICE_SRC = SERVICE_ROOT / "src"
 
-for path in (str(SERVICE_ROOT.parents[2]), str(SERVICE_SRC)):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if str(SERVICE_SRC) not in sys.path:
+    sys.path.insert(0, str(SERVICE_SRC))
 
 try:
     from langgraph.graph import END, StateGraph  # type: ignore
@@ -46,7 +45,7 @@ except ModuleNotFoundError:
     sys.modules["langgraph.graph"] = graph_module
 
 import main
-from shared.schemas.models import WeightNegotiationItem
+from schemas.models import WeightNegotiationItem
 
 
 class FakeResponse:
