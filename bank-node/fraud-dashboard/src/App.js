@@ -1645,83 +1645,6 @@ function App() {
               </div>
             </div>
           </SectionCard>
-
-          <SectionCard
-            icon={ICONS.trends}
-            title="Model Performance Trends"
-            subtitle="Comparing Accuracy and Loss metrics over registered versions."
-          >
-            <div style={{ display: 'grid', gap: 16 }}>
-              <div style={{ height: 260 }}>
-                {modelVersions.length === 0 ? (
-                  <EmptyState text="Awaiting model registry versions data." />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={[...modelVersions].reverse().map((mv) => ({
-                        version_id: mv.version_id,
-                        metrics: {
-                          accuracy:
-                            typeof mv.metrics?.accuracy === 'number' ? Math.min(1, Number(mv.metrics.accuracy.toFixed(4))) : null,
-                          loss: typeof mv.metrics?.loss === 'number' ? Math.min(1, Number(mv.metrics.loss.toFixed(4))) : null,
-                        },
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
-                      <YAxis domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tickFormatter={(v) => v.toFixed(2)} />
-                      <Tooltip formatter={(value) => (typeof value === 'number' ? value.toFixed(4) : value)} />
-                      <Legend />
-                      <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
-                      <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gap: 10,
-                  border: `1px solid ${COLORS.border}`,
-                  borderRadius: 12,
-                  padding: 14,
-                  background: '#f9fafb',
-                  minHeight: 320,
-                }}
-              >
-                <div style={{ fontWeight: 700, color: COLORS.text }}>Governance Audit Trail</div>
-                {governanceAuditEvents.length === 0 ? (
-                  <div style={{ color: COLORS.subtext, fontSize: 13 }}>
-                    {fetchState.governanceLoaded ? 'No governance audit events available.' : 'Loading governance audit events...'}
-                  </div>
-                ) : (
-                  governanceAuditEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      style={{
-                        border: `1px solid ${COLORS.border}`,
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        background: COLORS.card,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-                        <strong style={{ fontSize: 13 }}>{event.event_type}</strong>
-                        <span style={{ fontSize: 12, color: COLORS.subtext }}>{formatTimestamp(event.created_at)}</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: COLORS.subtext }}>
-                        <strong>Agent:</strong> {event.agent_id || 'system'}
-                      </div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: COLORS.subtext, fontFamily: 'monospace' }}>
-                        {JSON.stringify(event.details || {})}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </SectionCard>
         </div>
 
         <SectionCard icon={ICONS.feed} title="Recent Alerts Feed" subtitle="Live alert stream from the Alerting service, enriched with timestamps and confidence.">
@@ -1780,6 +1703,83 @@ function App() {
               </table>
             </div>
           )}
+        </SectionCard>
+
+        <SectionCard
+          icon={ICONS.trends}
+          title="Model Performance Trends"
+          subtitle="Comparing Accuracy and Loss metrics over registered versions."
+        >
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ height: 260 }}>
+              {modelVersions.length === 0 ? (
+                <EmptyState text="Awaiting model registry versions data." />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={[...modelVersions].reverse().map((mv) => ({
+                      version_id: mv.version_id,
+                      metrics: {
+                        accuracy:
+                          typeof mv.metrics?.accuracy === 'number' ? Math.min(1, Number(mv.metrics.accuracy.toFixed(4))) : null,
+                        loss: typeof mv.metrics?.loss === 'number' ? Math.min(1, Number(mv.metrics.loss.toFixed(4))) : null,
+                      },
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="version_id" tick={{ fontSize: 10 }} />
+                    <YAxis domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tickFormatter={(v) => v.toFixed(2)} />
+                    <Tooltip formatter={(value) => (typeof value === 'number' ? value.toFixed(4) : value)} />
+                    <Legend />
+                    <Line type="monotone" dataKey="metrics.accuracy" stroke="#16a34a" strokeWidth={2} name="Accuracy" />
+                    <Line type="monotone" dataKey="metrics.loss" stroke="#dc2626" strokeWidth={2} name="Loss" />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gap: 10,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 12,
+                padding: 14,
+                background: '#f9fafb',
+                minHeight: 320,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: COLORS.text }}>Governance Audit Trail</div>
+              {governanceAuditEvents.length === 0 ? (
+                <div style={{ color: COLORS.subtext, fontSize: 13 }}>
+                  {fetchState.governanceLoaded ? 'No governance audit events available.' : 'Loading governance audit events...'}
+                </div>
+              ) : (
+                governanceAuditEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: COLORS.card,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                      <strong style={{ fontSize: 13 }}>{event.event_type}</strong>
+                      <span style={{ fontSize: 12, color: COLORS.subtext }}>{formatTimestamp(event.created_at)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.subtext }}>
+                      <strong>Agent:</strong> {event.agent_id || 'system'}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: COLORS.subtext, fontFamily: 'monospace' }}>
+                      {JSON.stringify(event.details || {})}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </SectionCard>
       </div>
     </div>

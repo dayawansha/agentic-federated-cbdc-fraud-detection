@@ -19,7 +19,7 @@ from reasoning.schemas import (
 )
 
 # Import the Q-learning reinforcement learning agent instance we just commented
-from reasoning.rl import rl_agent
+from reasoning.QLearningRLAgent import rl_agent
 
 # Set up a logger specifically for this file's namespace
 logger = logging.getLogger(__name__)

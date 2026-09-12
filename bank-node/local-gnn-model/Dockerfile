@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install .
 
-COPY train-data/processed/ /app/train-data/processed/
+COPY bank-node/local-gnn-model/train-data/processed/ /app/train-data/processed/
 COPY ["train-data/EllipticPlusPlus-main/Transactions Dataset/txs_classes.csv", "/app/train-data/EllipticPlusPlus-main/Transactions Dataset/txs_classes.csv"]
 
 EXPOSE 9002

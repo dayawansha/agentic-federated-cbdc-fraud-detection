@@ -12,8 +12,8 @@ from urllib import error, request
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_EDGES_PATH = PROJECT_ROOT / "train-data" / "processed" / "txs_edges_processed.csv"
-DEFAULT_NODES_PATH = PROJECT_ROOT / "train-data" / "processed" / "txs_nodes_processed.csv"
+DEFAULT_EDGES_PATH = PROJECT_ROOT / "bank-node" / "local-gnn-model" / "train-data" / "processed" / "txs_edges_processed.csv"
+DEFAULT_NODES_PATH = PROJECT_ROOT / "bank-node" / "local-gnn-model" / "train-data" / "processed" / "txs_nodes_processed.csv"
 
 
 def parse_args() -> argparse.Namespace:
